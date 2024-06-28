@@ -15,6 +15,10 @@ import {utils} from "../utils.js";
 import {math} from "../math/math.js";
 import {TouchPickHandler} from "./lib/handlers/TouchPickHandler.js";
 
+const DEFAULT_SNAP_PICK_RADIUS = 30;
+const DEFAULT_SNAP_VERTEX = true;
+const DEFAULT_SNAP_EDGE = true;
+
 /**
  * @desc Controls the {@link Camera} with user input, and fires events when the user interacts with pickable {@link Entity}s.
  *
@@ -65,12 +69,12 @@ import {TouchPickHandler} from "./lib/handlers/TouchPickHandler.js";
  *
  * # Examples
  *
- * * [Orbit Navigation - Duplex Model](https://xeokit.github.io/xeokit-sdk/examples/#CameraControl_orbit_Duplex)
- * * [Orbit Navigation - Holter Tower Model](https://xeokit.github.io/xeokit-sdk/examples/#CameraControl_orbit_HolterTower)
- * * [First-Person Navigation - Duplex Model](https://xeokit.github.io/xeokit-sdk/examples/#CameraControl_firstPerson_Duplex)
- * * [First-Person Navigation - Holter Tower Model](https://xeokit.github.io/xeokit-sdk/examples/#CameraControl_firstPerson_HolterTower)
- * * [Plan-view Navigation - Schependomlaan Model](https://xeokit.github.io/xeokit-sdk/examples/#CameraControl_planView_Schependomlaan)
- * * [Custom Keyboard Mapping](https://xeokit.github.io/xeokit-sdk/examples/#CameraControl_keyMap)
+ * * [Orbit Navigation - Duplex Model](https://xeokit.github.io/xeokit-sdk/examples/index.html#CameraControl_orbit_Duplex)
+ * * [Orbit Navigation - Holter Tower Model](https://xeokit.github.io/xeokit-sdk/examples/index.html#CameraControl_orbit_HolterTower)
+ * * [First-Person Navigation - Duplex Model](https://xeokit.github.io/xeokit-sdk/examples/index.html#CameraControl_firstPerson_Duplex)
+ * * [First-Person Navigation - Holter Tower Model](https://xeokit.github.io/xeokit-sdk/examples/index.html#CameraControl_firstPerson_HolterTower)
+ * * [Plan-view Navigation - Schependomlaan Model](https://xeokit.github.io/xeokit-sdk/examples/index.html#CameraControl_planView_Schependomlaan)
+ * * [Custom Keyboard Mapping](https://xeokit.github.io/xeokit-sdk/examples/index.html#CameraControl_keyMap)
  * <br><br>
  *
  * # Orbit Mode
@@ -639,6 +643,11 @@ class CameraControl extends Component {
             pointerEnabled: true,
             constrainVertical: false,
             smartPivot: false,
+            doubleClickTimeFrame: 250,
+            
+            snapToVertex: DEFAULT_SNAP_VERTEX,
+            snapToEdge: DEFAULT_SNAP_EDGE,
+            snapRadius: DEFAULT_SNAP_PICK_RADIUS,
 
             // Rotation
 
@@ -874,7 +883,10 @@ class CameraControl extends Component {
      * @param {Boolean} value Set ````true```` to activate this ````CameraControl````.
      */
     set active(value) {
-        this._configs.active = value !== false;
+        value = value !== false;
+        this._configs.active = value;
+        this._handlers[1]._active = value;
+        this._handlers[5]._active = value;
     }
 
     /**
@@ -890,6 +902,64 @@ class CameraControl extends Component {
         return this._configs.active;
     }
 
+    /**
+     * Sets whether the pointer snap to vertex.
+     *
+     * @param {boolean} snapToVertex
+     */
+    set snapToVertex(snapToVertex) {
+        this._configs.snapToVertex = !!snapToVertex;
+    }
+
+    /**
+     * Gets whether the pointer snap to vertex.
+     *
+     * @returns {boolean}
+     */
+    get snapToVertex() {
+        return this._configs.snapToVertex;
+    }
+
+    /**
+     * Sets whether the pointer snap to edge.
+     *
+     * @param {boolean} snapToEdge
+     */
+    set snapToEdge(snapToEdge) {
+        this._configs.snapToEdge = !!snapToEdge;
+    }
+
+    /**
+     * Gets whether the pointer snap to edge.
+     *
+     * @returns {boolean}
+     */
+    get snapToEdge() {
+        return this._configs.snapToEdge;
+    }
+
+    /**
+     * Sets the current snap radius for "hoverSnapOrSurface" events, to specify whether the radius
+     * within which the pointer snaps to the nearest vertex or the nearest edge.
+     *
+     * Default value is 30 pixels.
+     *
+     * @param {Number} snapRadius The snap radius.
+     */
+    set snapRadius(snapRadius) {
+        snapRadius = snapRadius || DEFAULT_SNAP_PICK_RADIUS;
+        this._configs.snapRadius = snapRadius;
+    }
+
+    /**
+     * Gets the current snap radius.
+     *
+     * @returns {Number} The snap radius.
+     */
+    get snapRadius() {
+        return this._configs.snapRadius;
+    }
+    
     /**
      * Sets the current navigation mode.
      *
@@ -1571,6 +1641,25 @@ class CameraControl extends Component {
     }
 
     /**
+     * Sets a sphere as the representation of the pivot position.
+     *
+     * @param {Object} [cfg] Sphere configuration.
+     * @param {String} [cfg.size=1] Optional size factor of the sphere. Defaults to 1.
+     * @param {String} [cfg.material=PhongMaterial] Optional size factor of the sphere. Defaults to a red opaque material.
+     */
+    enablePivotSphere(cfg = {}) {
+        this._controllers.pivotController.enablePivotSphere(cfg);
+    }
+
+    /**
+     * Remove the sphere as the representation of the pivot position.
+     *
+     */
+    disablePivotSphere() {
+        this._controllers.pivotController.disablePivotSphere();
+    }
+    
+    /**
      * Sets whether smart default pivoting is enabled.
      *
      * When ````true````, we'll pivot by default about the 3D position of the mouse/touch pointer on an
@@ -1600,6 +1689,30 @@ class CameraControl extends Component {
      */
     get smartPivot() {
         return this._configs.smartPivot;
+    }
+
+    /**
+     * Sets the double click time frame length in milliseconds.
+     * 
+     * If two mouse click events occur within this time frame, it is considered a double click. 
+     * 
+     * Default is ````250````
+     * 
+     * @param {Number} value New double click time frame.
+     */
+    set doubleClickTimeFrame(value) {
+        this._configs.doubleClickTimeFrame = (value !== undefined && value !== null) ? value : 250;
+    }
+
+    /**
+     * Gets the double click time frame length in milliseconds.
+     *  
+     * Default is ````250````
+     * 
+     * @param {Number} value Current double click time frame.
+     */
+    get doubleClickTimeFrame() {
+        return this._configs.doubleClickTimeFrame;
     }
 
     /**

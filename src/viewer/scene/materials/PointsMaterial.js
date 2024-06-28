@@ -25,14 +25,14 @@ const PRESETS = {
  * * Located at {@link Scene#pointsMaterial}.
  * * Supports round and square points.
  * * Optional perspective point scaling.
- * * Globally configures "points" primitives for all {@link PerformanceModel}s.
+ * * Globally configures "points" primitives for all {@link VBOSceneModel}s.
  *
  * ## Usage
  *
  * In the example below, we'll customize the {@link Scene}'s global ````PointsMaterial````, then use
  * an {@link XKTLoaderPlugin} to load a model containing a point cloud.
  *
- * [[Run this example](http://xeokit.github.io/xeokit-sdk/examples/#materials_PointsMaterial)]
+ * [[Run this example](/examples/index.html#materials_PointsMaterial)]
  *
  * ````javascript
  * import {Viewer, XKTLoaderPlugin} from "xeokit-sdk.es.js";

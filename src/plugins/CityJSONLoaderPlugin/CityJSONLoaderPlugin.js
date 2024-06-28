@@ -1,10 +1,7 @@
-import {utils} from "../../viewer/scene/utils.js";
-import {PerformanceModel} from "../../viewer/scene/PerformanceModel/PerformanceModel.js";
-import {Plugin} from "../../viewer/Plugin.js";
+import {math, Plugin, SceneModel, utils} from "../../viewer/index.js";
 import {CityJSONDefaultDataSource} from "./CityJSONDefaultDataSource.js";
-import {math} from "../../viewer";
 
-import {earcut} from '../lib/earcut';
+import {earcut} from '../lib/earcut.js';
 
 const tempVec2a = math.vec2();
 const tempVec3a = math.vec3();
@@ -14,16 +11,18 @@ const tempVec3c = math.vec3();
 /**
  * {@link Viewer} plugin that loads models from CityJSON files.
  *
- * <a href="https://xeokit.github.io/xeokit-sdk/examples/#loading_CityJSONLoaderPlugin_Railway"><img src="https://xeokit.io/img/docs/CityJSONLoaderPlugin/CityJSONLoaderPlugin.png"></a>
+ * <a href="https://xeokit.github.io/xeokit-sdk/examples/index.html#loading_CityJSONLoaderPlugin_Railway"><img src="https://xeokit.io/img/docs/CityJSONLoaderPlugin/CityJSONLoaderPlugin.png"></a>
  *
- * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/#loading_CityJSONLoaderPlugin_Railway)]
+ * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/index.html#loading_CityJSONLoaderPlugin_Railway)]
  *
  * ## Overview
  *
  * * Loads small-to-medium sized models directly from [CityJSON 1.0.0](https://www.cityjson.org/specs/1.0.0/) files.
- * * Not recommended for large models. For best performance with large CityJSON datasets, we recommend using {@link XKTLoaderPlugin}.
  * * Loads double-precision coordinates, enabling models to be viewed at global coordinates without accuracy loss.
  * * Allows to set the position, scale and rotation of each model as you load it.
+ * * Not recommended for large models. For best performance with large CityJSON datasets, we recommend
+ * converting them to ````.xkt```` format (eg. using [convert2xkt](https://github.com/xeokit/xeokit-convert)), then loading
+ * the ````.xkt```` using {@link XKTLoaderPlugin}.
  *
  * ## Limitations
  *
@@ -54,7 +53,7 @@ const tempVec3c = math.vec3();
  * We'll also scale our model to half its size, rotate it 90 degrees about its local X-axis, then
  * translate it 100 units along its X axis.
  *
- * * [[Run example](https://xeokit.github.io/xeokit-sdk/examples/#loading_CityJSONLoaderPlugin_Railway)]
+ * * [[Run example](https://xeokit.github.io/xeokit-sdk/examples/index.html#loading_CityJSONLoaderPlugin_Railway)]
  *
  * ````javascript
  * import {Viewer, CityJSONLoaderPlugin} from "xeokit-sdk.es.js";
@@ -166,6 +165,10 @@ class CityJSONLoaderPlugin extends Plugin {
      * @param {Number[]} [params.rotation=[0,0,0]] The model's orientation, given as Euler angles in degrees, for each of the X, Y and Z axis.
      * @param {Number[]} [params.matrix=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]] The model's world transform matrix. Overrides the position, scale and rotation parameters. Relative to ````origin````.
      * @param {Object} [params.stats] Collects model statistics.
+     * @param {Boolean} [params.dtxEnabled=true] When ````true```` (default) use data textures (DTX), where appropriate, to
+     * represent the returned model. Set false to always use vertex buffer objects (VBOs). Note that DTX is only applicable
+     * to non-textured triangle meshes, and that VBOs are always used for meshes that have textures, line segments, or point
+     * primitives. Only works while {@link DTX#enabled} is also ````true````.
      * @returns {Entity} Entity representing the model, which will have {@link Entity#isModel} set ````true```` and will be registered by {@link Entity#id} in {@link Scene#models}.
      */
     load(params = {}) {
@@ -175,46 +178,47 @@ class CityJSONLoaderPlugin extends Plugin {
             delete params.id;
         }
 
-        const performanceModel = new PerformanceModel(this.viewer.scene, utils.apply(params, {
-            isModel: true
+        const sceneModel = new SceneModel(this.viewer.scene, utils.apply(params, {
+            isModel: true,
+            edges: true
         }));
 
         if (!params.src && !params.cityJSON) {
             this.error("load() param expected: src or cityJSON");
-            return performanceModel; // Return new empty model
+            return sceneModel; // Return new empty model
         }
 
         const options = {};
 
         if (params.src) {
-            this._loadModel(params.src, params, options, performanceModel);
+            this._loadModel(params.src, params, options, sceneModel);
         } else {
             const spinner = this.viewer.scene.canvas.spinner;
             spinner.processes++;
-            this._parseModel(params.cityJSON, params, options, performanceModel);
+            this._parseModel(params.cityJSON, params, options, sceneModel);
             spinner.processes--;
         }
 
-        return performanceModel;
+        return sceneModel;
     }
 
-    _loadModel(src, params, options, performanceModel) {
+    _loadModel(src, params, options, sceneModel) {
         const spinner = this.viewer.scene.canvas.spinner;
         spinner.processes++;
         this._dataSource.getCityJSON(params.src, (data) => {
-                this._parseModel(data, params, options, performanceModel);
+                this._parseModel(data, params, options, sceneModel);
                 spinner.processes--;
             },
             (errMsg) => {
                 spinner.processes--;
                 this.error(errMsg);
-                performanceModel.fire("error", errMsg);
+                sceneModel.fire("error", errMsg);
             });
     }
 
-    _parseModel(data, params, options, performanceModel) {
+    _parseModel(data, params, options, sceneModel) {
 
-        if (performanceModel.destroyed) {
+        if (sceneModel.destroyed) {
             return;
         }
 
@@ -255,7 +259,7 @@ class CityJSONLoaderPlugin extends Plugin {
         const ctx = {
             data,
             vertices,
-            performanceModel,
+            sceneModel,
             loadMetadata,
             metadata,
             rootMetaObject,
@@ -265,19 +269,19 @@ class CityJSONLoaderPlugin extends Plugin {
 
         this._parseCityJSON(ctx)
 
-        performanceModel.finalize();
+        sceneModel.finalize();
 
         if (loadMetadata) {
-            const metaModelId = performanceModel.id;
+            const metaModelId = sceneModel.id;
             this.viewer.metaScene.createMetaModel(metaModelId, ctx.metadata, options);
         }
 
-        performanceModel.scene.once("tick", () => {
-            if (performanceModel.destroyed) {
+        sceneModel.scene.once("tick", () => {
+            if (sceneModel.destroyed) {
                 return;
             }
-            performanceModel.scene.fire("modelLoaded", performanceModel.id); // FIXME: Assumes listeners know order of these two events
-            performanceModel.fire("loaded", true, false); // Don't forget the event, for late subscribers
+            sceneModel.scene.fire("modelLoaded", sceneModel.id); // FIXME: Assumes listeners know order of these two events
+            sceneModel.fire("loaded", true, false); // Don't forget the event, for late subscribers
         });
     }
 
@@ -311,7 +315,7 @@ class CityJSONLoaderPlugin extends Plugin {
 
     _parseCityObject(ctx, cityObject, objectId) {
 
-        const performanceModel = ctx.performanceModel;
+        const sceneModel = ctx.sceneModel;
         const data = ctx.data;
 
         if (ctx.loadMetadata) {
@@ -381,7 +385,7 @@ class CityJSONLoaderPlugin extends Plugin {
         }
 
         if (meshIds.length > 0) {
-            performanceModel.createEntity({
+            sceneModel.createEntity({
                 id: objectId,
                 meshIds: meshIds,
                 isObject: true
@@ -438,7 +442,7 @@ class CityJSONLoaderPlugin extends Plugin {
     _parseSurfacesWithOwnMaterials(ctx, surfaceMaterials, surfaces, meshIds) {
 
         const vertices = ctx.vertices;
-        const performanceModel = ctx.performanceModel;
+        const sceneModel = ctx.sceneModel;
 
         for (let i = 0; i < surfaces.length; i++) {
 
@@ -515,7 +519,7 @@ class CityJSONLoaderPlugin extends Plugin {
 
             const meshId = "" + ctx.nextId++;
 
-            performanceModel.createMesh({
+            sceneModel.createMesh({
                 id: meshId,
                 primitive: "triangles",
                 positions: geometryCfg.positions,
@@ -534,7 +538,7 @@ class CityJSONLoaderPlugin extends Plugin {
 
     _parseGeometrySurfacesWithSharedMaterial(ctx, geometry, objectMaterial, meshIds) {
 
-        const performanceModel = ctx.performanceModel;
+        const sceneModel = ctx.sceneModel;
         const sharedIndices = [];
         const geometryCfg = {
             positions: [],
@@ -583,7 +587,7 @@ class CityJSONLoaderPlugin extends Plugin {
 
             const meshId = "" + ctx.nextId++;
 
-            performanceModel.createMesh({
+            sceneModel.createMesh({
                 id: meshId,
                 primitive: "triangles",
                 positions: geometryCfg.positions,

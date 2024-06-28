@@ -1,21 +1,24 @@
 import {utils} from "../../viewer/scene/utils.js";
-import {PerformanceModel} from "../../viewer/scene/PerformanceModel/PerformanceModel.js";
+import {SceneModel} from "../../viewer/scene/model/index.js";
 import {Plugin} from "../../viewer/Plugin.js";
 import {LASDefaultDataSource} from "./LASDefaultDataSource.js";
-import {math} from "../../viewer";
-import {parse} from '../../../node_modules/@loaders.gl/core/dist/esm/index.js';
-import {LASLoader} from '../../../node_modules/@loaders.gl/las/dist/esm/las-loader.js';
+import {math} from "../../viewer/index.js";
+import {parse} from '@loaders.gl/core';
+import {LASLoader} from '@loaders.gl/las/dist/esm/las-loader.js';
+import {loadLASHeader} from "./loadLASHeader";
+
+const MAX_VERTICES = 500000; // TODO: Rough estimate
 
 /**
  * {@link Viewer} plugin that loads lidar point cloud geometry from LAS files.
  *
- * <a href="https://xeokit.github.io/xeokit-sdk/examples/#loading_LASLoaderPlugin_Autzen"><img src="https://xeokit.github.io/xeokit-sdk/assets/images/autzen.png"></a>
+ * <a href="https://xeokit.github.io/xeokit-sdk/examples/index.html#loading_LASLoaderPlugin_Autzen"><img src="https://xeokit.github.io/xeokit-sdk/assets/images/autzen.png"></a>
  *
- * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/#loading_LASLoaderPlugin_Autzen)]
+ * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/index.html#loading_LASLoaderPlugin_Autzen)]
  *
  * ## Summary
  *
- * * Loads [LAS 1.4 Format](https://www.asprs.org/divisions-committees/lidar-division/laser-las-file-format-exchange-activities) from both *.las* and *.laz* files.
+ * * Loads [LAS Formats](https://www.asprs.org/divisions-committees/lidar-division/laser-las-file-format-exchange-activities) up to v1.3 from both *.las* and *.laz* files. It does not support LAS v1.4.
  * * Loads lidar point cloud positions, colors and intensities.
  * * Supports 32 and 64-bit positions.
  * * Supports 8 and 16-bit color depths.
@@ -50,7 +53,7 @@ import {LASLoader} from '../../../node_modules/@loaders.gl/las/dist/esm/las-load
  * a [LAS file](/assets/models/las/). Once the model has
  * loaded, we'll then find its {@link MetaModel}, and the {@link MetaObject} and {@link Entity} that represent its point cloud.
  *
- * * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/#loading_LASLoaderPlugin_Autzen)]
+ * * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/index.html#loading_LASLoaderPlugin_Autzen)]
  *
  * ````javascript
  * import {Viewer, LASLoaderPlugin} from "xeokit-sdk.es.js";
@@ -137,6 +140,60 @@ import {LASLoader} from '../../../node_modules/@loaders.gl/las/dist/esm/las-load
  * const modelEntity = lasLoader.load({
  *      id: "myModel",
  *      src: "../assets/models/las/autzen.laz"
+ * });
+ * ````
+ *
+ * ## Showing a LAS/LAZ model in TreeViewPlugin
+ *
+ * We can use the `load()` method's `elementId` parameter
+ * to make LASLoaderPlugin load the entire model into a single Entity that gets this ID.
+ *
+ * In conjunction with that parameter, we can then use the `load()` method's `metaModelJSON` parameter to create a MetaModel that
+ * contains a MetaObject that corresponds to that Entity.
+ *
+ * When we've done that, then xeokit's {@link TreeViewPlugin} is able to have a node that represents the model and controls
+ * the visibility of that Entity (ie. to control the visibility of the entire model).
+ *
+ * The snippet below shows how this is done.
+ *
+ * ````javascript
+ * import {Viewer, LASLoaderPlugin, NavCubePlugin, TreeViewPlugin} from "../../dist/xeokit-sdk.es.js";
+ *
+ * const viewer = new Viewer({
+ *     canvasId: "myCanvas",
+ *     transparent: true
+ * });
+ *
+ * new TreeViewPlugin(viewer, {
+ *     containerElement: document.getElementById("treeViewContainer"),
+ *     hierarchy: "containment"
+ * });
+ *
+ * const lasLoader = new LASLoaderPlugin(viewer);
+ *
+ * const sceneModel = lasLoader.load({  // Creates a SceneModel with ID "myScanModel"
+ *     id: "myScanModel",
+ *     src: "../../assets/models/las/Nalls_Pumpkin_Hill.laz",
+ *     rotation: [-90, 0, 0],
+ *
+ *     entityId: "3toKckUfH2jBmd$7uhJHa4", // Creates an Entity with this ID
+ *
+ *     metaModelJSON: { // Creates a MetaModel with ID "myScanModel"
+ *         "metaObjects": [
+ *             {
+ *                 "id": "3toKckUfH2jBmd$7uhJHa6", // Creates this MetaObject with this ID
+ *                 "name": "My Project",
+ *                 "type": "Default",
+ *                 "parent": null
+ *             },
+ *             {
+ *                 "id": "3toKckUfH2jBmd$7uhJHa4", // Creates this MetaObject with this ID
+ *                 "name": "My Scan",
+ *                 "type": "Default",
+ *                 "parent": "3toKckUfH2jBmd$7uhJHa6"
+ *             }
+ *         ]
+ *     }
  * });
  * ````
  *
@@ -255,7 +312,7 @@ class LASLoaderPlugin extends Plugin {
      * @param {Number|String} value Valid values are 8, 16 and "auto".
      */
     set colorDepth(value) {
-        this._colorDepth = !!value;
+        this._colorDepth = value || "auto";
     }
 
     /**
@@ -281,58 +338,60 @@ class LASLoaderPlugin extends Plugin {
             delete params.id;
         }
 
-        const performanceModel = new PerformanceModel(this.viewer.scene, utils.apply(params, {
+        const sceneModel = new SceneModel(this.viewer.scene, utils.apply(params, {
             isModel: true
         }));
 
         if (!params.src && !params.las) {
             this.error("load() param expected: src or las");
-            return performanceModel; // Return new empty model
+            return sceneModel; // Return new empty model
         }
 
         const options = {
-            skip: this._skip,
-            fp64: this._fp64,
-            colorDepth: this._colorDepth
+            las: {
+                skip: this._skip,
+                fp64: this._fp64,
+                colorDepth: this._colorDepth
+            }
         };
 
         if (params.src) {
-            this._loadModel(params.src, params, options, performanceModel);
+            this._loadModel(params.src, params, options, sceneModel);
         } else {
             const spinner = this.viewer.scene.canvas.spinner;
             spinner.processes++;
-            this._parseModel(params.las, params, options, performanceModel).then(() => {
+            this._parseModel(params.las, params, options, sceneModel).then(() => {
                 spinner.processes--;
             }, (errMsg) => {
                 spinner.processes--;
                 this.error(errMsg);
-                performanceModel.fire("error", errMsg);
+                sceneModel.fire("error", errMsg);
             });
         }
 
-        return performanceModel;
+        return sceneModel;
     }
 
-    _loadModel(src, params, options, performanceModel) {
+    _loadModel(src, params, options, sceneModel) {
         const spinner = this.viewer.scene.canvas.spinner;
         spinner.processes++;
         this._dataSource.getLAS(params.src, (arrayBuffer) => {
-                this._parseModel(arrayBuffer, params, options, performanceModel).then(() => {
+                this._parseModel(arrayBuffer, params, options, sceneModel).then(() => {
                     spinner.processes--;
                 }, (errMsg) => {
                     spinner.processes--;
                     this.error(errMsg);
-                    performanceModel.fire("error", errMsg);
+                    sceneModel.fire("error", errMsg);
                 });
             },
             (errMsg) => {
                 spinner.processes--;
                 this.error(errMsg);
-                performanceModel.fire("error", errMsg);
+                sceneModel.fire("error", errMsg);
             });
     }
 
-    _parseModel(arrayBuffer, params, options, performanceModel) {
+    _parseModel(arrayBuffer, params, options, sceneModel) {
 
         function readPositions(attributesPosition) {
             const positionsValue = attributesPosition.value;
@@ -364,7 +423,7 @@ class LASLoaderPlugin extends Plugin {
         }
 
         function readIntensities(attributesIntensity) {
-            const intensities = attributesIntensity.intensity;
+            const intensities = attributesIntensity.value;
             const colorsCompressedSize = intensities.length * 4;
             const colorsCompressed = new Uint8Array(colorsCompressedSize);
             for (let i = 0, j = 0, k = 0, len = intensities.length; i < len; i++, k += 3, j += 4) {
@@ -378,7 +437,7 @@ class LASLoaderPlugin extends Plugin {
 
         return new Promise((resolve, reject) => {
 
-            if (performanceModel.destroyed) {
+            if (sceneModel.destroyed) {
                 reject();
                 return;
             }
@@ -397,23 +456,24 @@ class LASLoaderPlugin extends Plugin {
             stats.numVertices = 0;
 
             try {
+
+                const lasHeader = loadLASHeader(arrayBuffer);
+
                 parse(arrayBuffer, LASLoader, options).then((parsedData) => {
 
-                    const loaderData = parsedData.loaderData;
-                    const loaderDataHeader = loaderData.header;
-                    const pointsFormatId = loaderDataHeader.pointsFormatId;
-
                     const attributes = parsedData.attributes;
+                    const loaderData = parsedData.loaderData;
+                    const pointsFormatId = loaderData.pointsFormatId !== undefined ? loaderData.pointsFormatId : -1;
 
                     if (!attributes.POSITION) {
-                        performanceModel.finalize();
+                        sceneModel.finalize();
                         reject("No positions found in file");
                         return;
                     }
-                    
+
                     let positionsValue
                     let colorsCompressed;
-                    
+
                     switch (pointsFormatId) {
                         case 0:
                             positionsValue = readPositions(attributes.POSITION);
@@ -421,7 +481,7 @@ class LASLoaderPlugin extends Plugin {
                             break;
                         case 1:
                             if (!attributes.intensity) {
-                                performanceModel.finalize();
+                                sceneModel.finalize();
                                 reject("No positions found in file");
                                 return;
                             }
@@ -430,7 +490,7 @@ class LASLoaderPlugin extends Plugin {
                             break;
                         case 2:
                             if (!attributes.intensity) {
-                                performanceModel.finalize();
+                                sceneModel.finalize();
                                 reject("No positions found in file");
                                 return;
                             }
@@ -439,7 +499,7 @@ class LASLoaderPlugin extends Plugin {
                             break;
                         case 3:
                             if (!attributes.intensity) {
-                                performanceModel.finalize();
+                                sceneModel.finalize();
                                 reject("No positions found in file");
                                 return;
                             }
@@ -448,24 +508,59 @@ class LASLoaderPlugin extends Plugin {
                             break;
                     }
 
-                    performanceModel.createMesh({
-                        id: "pointsMesh",
-                        primitive: "points",
-                        positions: positionsValue,
-                        colorsCompressed: colorsCompressed
-                    });
+                    const pointsChunks = chunkArray(positionsValue, MAX_VERTICES * 3);
+                    const colorsChunks = chunkArray(colorsCompressed, MAX_VERTICES * 4);
+                    const meshIds = [];
 
-                    const pointsObjectId = math.createUUID();
+                    for (let i = 0, len = pointsChunks.length; i < len; i++) {
+                        const meshId = `pointsMesh${i}`;
+                        meshIds.push(meshId);
+                        sceneModel.createMesh({
+                            id: meshId,
+                            primitive: "points",
+                            positions: pointsChunks[i],
+                            colorsCompressed: (i < colorsChunks.length) ? colorsChunks[i] : null
+                        });
+                    }
+                    /*
+                                const pointsChunks = chunkArray(positionsValue, MAX_VERTICES * 3);
+                    const colorsChunks = chunkArray(colorsCompressed, MAX_VERTICES * 4);
+                    const meshIds = [];
 
-                    performanceModel.createEntity({
+                    for (let i = 0, len = pointsChunks.length; i < len; i++) {
+
+                        const geometryId = `geometryMesh${i}`;
+                        const meshId = `pointsMesh${i}`;
+                        meshIds.push(meshId);
+
+                        sceneModel.createGeometry({
+                            id: geometryId,
+                            primitive: "points",
+                            positions: pointsChunks[i],
+                            colorsCompressed: (i < colorsChunks.length) ? colorsChunks[i] : null
+                        });
+
+                        sceneModel.createMesh({
+                            id: meshId,
+                            geometryId
+                        });
+                    }
+                     */
+
+                    const pointsObjectId = params.entityId || math.createUUID();
+
+                    sceneModel.createEntity({
                         id: pointsObjectId,
-                        meshIds: ["pointsMesh"],
+                        meshIds,
                         isObject: true
                     });
 
-                    performanceModel.finalize();
+                    sceneModel.finalize();
 
-                    if (params.loadMetadata !== false) {
+                    if (params.metaModelJSON) {
+                        const metaModelId = sceneModel.id;
+                        this.viewer.metaScene.createMetaModel(metaModelId, params.metaModelJSON, options);
+                    } else if (params.loadMetadata !== false) {
                         const rootMetaObjectId = math.createUUID();
                         const metadata = {
                             projectId: "",
@@ -473,38 +568,53 @@ class LASLoaderPlugin extends Plugin {
                             createdAt: "",
                             schema: "",
                             creatingApplication: "",
-                            metaObjects: [{
-                                id: rootMetaObjectId,
-                                name: "Model",
-                                type: "Model"
-                            }, {
-                                id: pointsObjectId,
-                                name: "PointCloud (LAS)",
-                                type: "PointCloud",
-                                parent: rootMetaObjectId
-                            }],
+                            metaObjects: [
+                                {
+                                    id: rootMetaObjectId,
+                                    name: "Model",
+                                    type: "Model"
+                                },
+                                {
+                                    id: pointsObjectId,
+                                    name: "PointCloud (LAS)",
+                                    type: "PointCloud",
+                                    parent: rootMetaObjectId,
+                                    attributes: lasHeader || {}
+                                }
+                            ],
                             propertySets: []
                         };
-                        const metaModelId = performanceModel.id;
+                        const metaModelId = sceneModel.id;
                         this.viewer.metaScene.createMetaModel(metaModelId, metadata, options);
                     }
 
-                    performanceModel.scene.once("tick", () => {
-                        if (performanceModel.destroyed) {
+                    sceneModel.scene.once("tick", () => {
+                        if (sceneModel.destroyed) {
                             return;
                         }
-                        performanceModel.scene.fire("modelLoaded", performanceModel.id); // FIXME: Assumes listeners know order of these two events
-                        performanceModel.fire("loaded", true, false); // Don't forget the event, for late subscribers
+                        sceneModel.scene.fire("modelLoaded", sceneModel.id); // FIXME: Assumes listeners know order of these two events
+                        sceneModel.fire("loaded", true, false); // Don't forget the event, for late subscribers
                     });
 
                     resolve();
                 });
             } catch (e) {
-                performanceModel.finalize();
+                sceneModel.finalize();
                 reject(e);
             }
         });
     }
+}
+
+function chunkArray(array, chunkSize) {
+    if (chunkSize >= array.length) {
+        return [array];
+    }
+    let result = [];
+    for (let i = 0; i < array.length; i += chunkSize) {
+        result.push(array.slice(i, i + chunkSize));
+    }
+    return result;
 }
 
 export {LASLoaderPlugin};

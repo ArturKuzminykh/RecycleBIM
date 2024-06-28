@@ -6,7 +6,6 @@ class PickResult {
 
     /**
      * @private
-     * @param value
      */
     constructor() {
 
@@ -43,13 +42,32 @@ class PickResult {
          */
         this.pickSurfacePrecision = false;
 
-        this._canvasPos = new Int16Array([0, 0]);
+        /**
+         * True when picked from touch input, else false when from mouse input.
+         * @type {boolean}
+         */
+        this.touchInput = false;
+
+        /**
+         * True when snapped to nearest edge.
+         * @type {boolean}
+         */
+        this.snappedToEdge = false;
+
+        /**
+         * True when snapped to nearest vertex.
+         * @type {boolean}
+         */
+        this.snappedToVertex = false;
+
         this._origin = new Float64Array([0, 0, 0]);
         this._direction = new Float64Array([0, 0, 0]);
         this._indices = new Int32Array(3);
         this._localPos = new Float64Array([0, 0, 0]);
         this._worldPos = new Float64Array([0, 0, 0]);
         this._viewPos = new Float64Array([0, 0, 0]);
+        this._canvasPos = new Int16Array([0, 0]);
+        this._snappedCanvasPos = new Int16Array([0, 0]);
         this._bary = new Float64Array([0, 0, 0]);
         this._worldNormal = new Float64Array([0, 0, 0]);
         this._uv = new Float64Array([0, 0]);
@@ -58,7 +76,7 @@ class PickResult {
     }
 
     /**
-     * Canvas coordinates when picking with a 2D pointer.
+     * Canvas pick coordinates.
      * @property canvasPos
      * @type {Number[]}
      */
@@ -130,7 +148,6 @@ class PickResult {
     
     /**
      * Picked triangle's vertex indices.
-     * Only defined when an entity and triangle was picked.
      * @property indices
      * @type {Int32Array}
      */
@@ -154,8 +171,7 @@ class PickResult {
     }
 
     /**
-     * Picked Local-space point on surface.
-     * Only defined when an entity and a point on its surface was picked.
+     * Picked Local-space point.
      * @property localPos
      * @type {Number[]}
      */
@@ -179,13 +195,35 @@ class PickResult {
     }
 
     /**
-     * Picked World-space point on surface.
-     * Only defined when an entity and a point on its surface was picked.
+     * Canvas cursor coordinates, snapped when snap picking, otherwise same as {@link PickResult#pointerPos}.
+     * @property snappedCanvasPos
+     * @type {Number[]}
+     */
+    get snappedCanvasPos() {
+        return this._gotSnappedCanvasPos ? this._snappedCanvasPos : null;
+    }
+
+    /**
+     * @private
+     * @param value
+     */
+    set snappedCanvasPos(value) {
+        if (value) {
+            this._snappedCanvasPos[0] = value[0];
+            this._snappedCanvasPos[1] = value[1];
+            this._gotSnappedCanvasPos = true;
+        } else {
+            this._gotSnappedCanvasPos = false;
+        }
+    }
+
+    /**
+     * Picked World-space point.
      * @property worldPos
      * @type {Number[]}
      */
     get worldPos() {
-        return this.entity && this._gotWorldPos ? this._worldPos : null;
+        return this._gotWorldPos ? this._worldPos : null;
     }
 
     /**
@@ -204,8 +242,7 @@ class PickResult {
     }
 
     /**
-     * Picked View-space point on surface.
-     * Only defined when an entity and a point on its surface was picked.
+     * Picked View-space point.
      * @property viewPos
      * @type {Number[]}
      */
@@ -230,7 +267,6 @@ class PickResult {
 
     /**
      * Barycentric coordinate within picked triangle.
-     * Only defined when an entity and a point on its surface was picked.
      * @property bary
      * @type {Number[]}
      */
@@ -255,7 +291,6 @@ class PickResult {
 
     /**
      * Normal vector at picked position on surface.
-     * Only defined when an entity and a point on its surface was picked.
      * @property worldNormal
      * @type {Number[]}
      */
@@ -280,7 +315,6 @@ class PickResult {
 
     /**
      * UV coordinates at picked position on surface.
-     * Only defined when an entity and a point on its surface was picked.
      * @property uv
      * @type {Number[]}
      */
@@ -303,6 +337,14 @@ class PickResult {
     }
 
     /**
+     * True if snapped to edge or vertex.
+     * @returns {boolean}
+     */
+    get snapped() {
+        return this.snappedToEdge || this.snappedToVertex;
+    }
+
+    /**
      * @private
      */
     reset() {
@@ -311,6 +353,7 @@ class PickResult {
         this.primitive = null;
         this.pickSurfacePrecision = false;
         this._gotCanvasPos = false;
+        this._gotSnappedCanvasPos = false;
         this._gotOrigin = false;
         this._gotDirection = false;
         this._gotIndices = false;
@@ -320,6 +363,9 @@ class PickResult {
         this._gotBary = false;
         this._gotWorldNormal = false;
         this._gotUV = false;
+        this.touchInput = false;
+        this.snappedToEdge = false;
+        this.snappedToVertex = false;
     }
 }
 

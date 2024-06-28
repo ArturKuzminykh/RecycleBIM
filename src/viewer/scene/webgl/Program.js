@@ -86,7 +86,7 @@ class Program {
         gl.attachShader(this.handle, this._fragmentShader.handle);
         gl.linkProgram(this.handle);
         this.linked = gl.getProgramParameter(this.handle, gl.LINK_STATUS);
-        // HACK: Disable validation temporarily: https://github.com/xeolabs/xeokit/issues/5
+        // HACK: Disable validation temporarily
         // Perhaps we should defer validation until render-time, when the program has values set for all inputs?
         this.validated = true;
         if (!this.linked || !this.validated) {
@@ -110,6 +110,8 @@ class Program {
                 }
                 location = gl.getUniformLocation(this.handle, uName);
                 if ((u.type === gl.SAMPLER_2D) || (u.type === gl.SAMPLER_CUBE) || (u.type === 35682)) {
+                    this.samplers[uName] = new Sampler(gl, location);
+                } else if (gl instanceof WebGL2RenderingContext && (u.type === gl.UNSIGNED_INT_SAMPLER_2D || u.type === gl.INT_SAMPLER_2D)) {
                     this.samplers[uName] = new Sampler(gl, location);
                 } else {
                     this.uniforms[uName] = location;

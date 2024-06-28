@@ -1,5 +1,8 @@
 import {math} from "./scene/math/math.js";
 
+let maxDataTextureHeight = 1 << 16;
+let maxGeometryBatchSize = 5000000
+
 /**
  * Manages global configurations for all {@link Viewer}s.
  *
@@ -10,10 +13,10 @@ import {math} from "./scene/math/math.js";
  *
  * That's OK if we know that we're not going to view models that are geographically vast, or offset far from the World coordinate origin.
  *
- * [[Run this example](http://xeokit.github.io/xeokit-sdk/examples/#Configs_disableDoublePrecisionAndRAF)]
+ * [[Run this example](/examples/index.html#Configs_disableDoublePrecisionAndRAF)]
  *
  * ````javascript
- * import {Configs, Viewer, XKTLoaderPlugin} from "../dist/xeokit-sdk.min.es.js";
+ * import {Configs, Viewer, XKTLoaderPlugin} from "https://cdn.jsdelivr.net/npm/@xeokit/xeokit-sdk/dist/xeokit-sdk.es.min.js";
  *
  * // Access xeoit-sdk global configs.
  * // We typically set configs only before we create any Viewers.
@@ -39,7 +42,7 @@ import {math} from "./scene/math/math.js";
  * });
  * ````
  */
-class Configs {
+export class Configs {
 
     /**
      * Creates a Configs.
@@ -60,7 +63,7 @@ class Configs {
      *
      * This should only be set once, before creating any Viewers.
      *
-     * @returns {boolean}
+     * @returns {Boolean}
      */
     set doublePrecisionEnabled(doublePrecision) {
         math.setDoublePrecisionEnabled(doublePrecision);
@@ -69,11 +72,56 @@ class Configs {
     /**
      * Gets whether double precision mode is enabled for all Viewers.
      *
-     * @returns {boolean}
+     * @returns {Boolean}
      */
     get doublePrecisionEnabled() {
         return math.getDoublePrecisionEnabled();
     }
+
+    /**
+     * Sets the maximum data texture height.
+     *
+     * Should be a multiple of 1024. Default is 4096, which is the maximum allowed value.
+     */
+    set maxDataTextureHeight(value) {
+        value = Math.ceil(value / 1024) * 1024;
+        if (value > 4096) {
+            value = 4096;
+        } else if (value < 1024) {
+            value = 1024;
+        }
+        maxDataTextureHeight = value;
+    }
+
+    /**
+     * Sets maximum data texture height.
+     * @returns {*|number}
+     */
+    get maxDataTextureHeight() {
+        return maxDataTextureHeight;
+    }
+
+    /**
+     * Sets the maximum batched geometry VBO size.
+     *
+     * Default value is 5000000, which is the maximum size.
+     *
+     * Minimum size is 100000.
+     */
+    set maxGeometryBatchSize(value) {
+        if (value < 100000) {
+            value = 100000;
+        } else if (value > 5000000) {
+            value = 5000000;
+        }
+        maxGeometryBatchSize = value;
+    }
+
+    /**
+     * Gets the maximum batched geometry VBO size.
+     */
+    get maxGeometryBatchSize() {
+        return maxGeometryBatchSize;
+    }
 }
 
-export {Configs};

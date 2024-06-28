@@ -1,4 +1,5 @@
 import {utils} from "../../viewer/scene/utils.js";
+import {core} from "../../viewer/scene/core.js";
 
 /**
  * Default data access strategy for {@link GLTFLoaderPlugin}.
@@ -14,8 +15,8 @@ class GLTFDefaultDataSource {
      * Gets metamodel JSON.
      *
      * @param {String|Number} metaModelSrc Identifies the metamodel JSON asset.
-     * @param {{Function(*)}} ok Fired on successful loading of the metamodel JSON asset.
-     * @param {{Function(*)}} error Fired on error while loading the metamodel JSON asset.
+     * @param {Function} ok Fired on successful loading of the metamodel JSON asset.
+     * @param {Function} error Fired on error while loading the metamodel JSON asset.
      */
     getMetaModel(metaModelSrc, ok, error) {
         utils.loadJSON(metaModelSrc,
@@ -35,9 +36,26 @@ class GLTFDefaultDataSource {
      * @param {Function} error Fired on error while loading the glTF JSON asset.
      */
     getGLTF(glTFSrc, ok, error) {
-        utils.loadJSON(glTFSrc,
+        utils.loadArraybuffer(glTFSrc,
             (gltf) => {
                 ok(gltf);
+            },
+            function (errMsg) {
+                error(errMsg);
+            });
+    }
+
+    /**
+     * Gets binary glTF file.
+     *
+     * @param {String|Number} glbSrc Identifies the .glb asset.
+     * @param {Function} ok Fired on successful loading of the .glb asset.
+     * @param {Function} error Fired on error while loading the .glb asset.
+     */
+    getGLB(glbSrc, ok, error) {
+        utils.loadArraybuffer(glbSrc,
+            (arraybuffer) => {
+                ok(arraybuffer);
             },
             function (errMsg) {
                 error(errMsg);
@@ -87,13 +105,13 @@ function loadArraybuffer(glTFSrc, binarySrc, ok, err) {
             for (var i = 0; i < data.length; i++) {
                 view[i] = data.charCodeAt(i);
             }
-            window.setTimeout(function () {
+            core.scheduleTask(function () {
                 ok(buffer);
-            }, 0);
+            });
         } catch (error) {
-            window.setTimeout(function () {
+            core.scheduleTask(function () {
                 err(error);
-            }, 0);
+            });
         }
     } else {
         const basePath = getBasePath(glTFSrc);

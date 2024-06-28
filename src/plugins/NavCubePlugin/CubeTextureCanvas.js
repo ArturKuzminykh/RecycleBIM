@@ -3,10 +3,11 @@ import {math} from "../../viewer/scene/math/math.js";
 /**
  * @private
  */
-function CubeTextureCanvas(viewer, cfg = {}) {
+function CubeTextureCanvas(viewer, navCubeScene, cfg = {}) {
 
     const cubeColor = "lightgrey";
     const cubeHighlightColor = cfg.hoverColor || "rgba(0,0,0,0.4)";
+    const textColor = cfg.textColor || "black";
 
     const height = 500;
     const width = height + (height / 3);
@@ -15,8 +16,8 @@ function CubeTextureCanvas(viewer, cfg = {}) {
     const facesZUp = [
         {boundary: [6, 6, 6, 6], color: cfg.frontColor || cfg.color || "#55FF55"},
         {boundary: [18, 6, 6, 6], color: cfg.backColor || cfg.color || "#55FF55"},
-        {boundary: [12, 6, 6, 6], color: cfg.leftColor || cfg.color || "#FF5555"},
-        {boundary: [0, 6, 6, 6], color: cfg.rightColor || cfg.color || "#FF5555"},
+        {boundary: [12, 6, 6, 6], color: cfg.rightColor || cfg.color || "#FF5555"},
+        {boundary: [0, 6, 6, 6], color: cfg.leftColor || cfg.color || "#FF5555"},
         {boundary: [6, 0, 6, 6], color: cfg.topColor || cfg.color || "#7777FF"},
         {boundary: [6, 12, 6, 6], color: cfg.bottomColor || cfg.color || "#7777FF"}
     ];
@@ -53,8 +54,8 @@ function CubeTextureCanvas(viewer, cfg = {}) {
     const facesYUp = [
         {boundary: [6, 6, 6, 6], color: cfg.frontColor || cfg.color || "#55FF55"},
         {boundary: [18, 6, 6, 6], color: cfg.backColor || cfg.color || "#55FF55"},
-        {boundary: [12, 6, 6, 6], color: cfg.leftColor || cfg.color || "#FF5555"},
-        {boundary: [0, 6, 6, 6], color: cfg.rightColor || cfg.color || "#FF5555"},
+        {boundary: [12, 6, 6, 6], color: cfg.rightColor || cfg.color || "#FF5555"},
+        {boundary: [0, 6, 6, 6], color: cfg.leftColor || cfg.color || "#FF5555"},
         {boundary: [6, 0, 6, 6], color: cfg.topColor || cfg.color || "#7777FF"},
         {boundary: [6, 12, 6, 6], color: cfg.bottomColor || cfg.color || "#7777FF"}
     ];
@@ -158,7 +159,7 @@ function CubeTextureCanvas(viewer, cfg = {}) {
                 }
             }
             if (area.label) {
-                context.fillStyle = "black";
+                context.fillStyle = textColor;
                 context.font = '60px sans-serif';
                 context.textAlign = "center";
                 var xcenter = xmin + (width * 0.5);
@@ -167,7 +168,7 @@ function CubeTextureCanvas(viewer, cfg = {}) {
             }
         }
 
-        viewer.scene.glRedraw();
+        navCubeScene.glRedraw();
     }
 
     const translateLabel = (function () {

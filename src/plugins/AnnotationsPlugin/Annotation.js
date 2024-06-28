@@ -151,7 +151,7 @@ class Annotation extends Marker {
             if (utils.isArray(markerHTML)) {
                 markerHTML = markerHTML.join("");
             }
-            markerHTML = this._renderTemplate(markerHTML);
+            markerHTML = this._renderTemplate(markerHTML.trim());
             const markerFragment = document.createRange().createContextualFragment(markerHTML);
             this._marker = markerFragment.firstChild;
             this._container.appendChild(this._marker);
@@ -165,6 +165,9 @@ class Annotation extends Marker {
             this._marker.addEventListener("mouseleave", () => {
                 this.plugin.fire("markerMouseLeave", this);
             });
+            this._marker.addEventListener('wheel', (event) => {
+                this.plugin.viewer.scene.canvas.canvas.dispatchEvent(new WheelEvent('wheel', event));
+            });
         }
         if (!this._labelExternal) {
             if (this._label) {
@@ -175,11 +178,14 @@ class Annotation extends Marker {
             if (utils.isArray(labelHTML)) {
                 labelHTML = labelHTML.join("");
             }
-            labelHTML = this._renderTemplate(labelHTML);
+            labelHTML = this._renderTemplate(labelHTML.trim());
             const labelFragment = document.createRange().createContextualFragment(labelHTML);
             this._label = labelFragment.firstChild;
             this._container.appendChild(this._label);
             this._label.style.visibility = (this._markerShown && this._labelShown) ? "visible" : "hidden";
+            this._label.addEventListener('wheel', (event) => {
+                this.plugin.viewer.scene.canvas.canvas.dispatchEvent(new WheelEvent('wheel', event));
+            });
         }
     }
 

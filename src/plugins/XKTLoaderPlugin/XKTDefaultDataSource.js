@@ -9,11 +9,28 @@ class XKTDefaultDataSource {
     }
 
     /**
+     * Gets manifest JSON.
+     *
+     * @param {String|Number} manifestSrc Identifies the manifest JSON asset.
+     * @param {Function} ok Fired on successful loading of the manifest JSON asset.
+     * @param {Function} error Fired on error while loading the manifest JSON asset.
+     */
+    getManifest(manifestSrc, ok, error) {
+        utils.loadJSON(manifestSrc,
+            (json) => {
+                ok(json);
+            },
+            function (errMsg) {
+                error(errMsg);
+            });
+    }
+
+    /**
      * Gets metamodel JSON.
      *
      * @param {String|Number} metaModelSrc Identifies the metamodel JSON asset.
-     * @param {{Function(*)}} ok Fired on successful loading of the metamodel JSON asset.
-     * @param {{Function(*)}} error Fired on error while loading the metamodel JSON asset.
+     * @param {Function} ok Fired on successful loading of the metamodel JSON asset.
+     * @param {Function} error Fired on error while loading the metamodel JSON asset.
      */
     getMetaModel(metaModelSrc, ok, error) {
         utils.loadJSON(metaModelSrc,

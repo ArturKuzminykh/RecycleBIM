@@ -1,4 +1,9 @@
-import {math} from "../../../math/math.js";
+import { math } from "../../../math/math.js";
+import { PhongMaterial } from "../../../materials/PhongMaterial.js";
+import { Mesh } from "../../../mesh/Mesh.js";
+import { VBOGeometry } from "../../../geometry/VBOGeometry.js";
+import { buildSphereGeometry } from "../../../geometry/builders/buildSphereGeometry.js";
+import { worldToRTCPos } from "../../../math/rtcCoords.js";
 
 const tempVec3a = math.vec3();
 const tempVec3b = math.vec3();
@@ -30,6 +35,14 @@ class PivotController {
         this._pivoting = false; // True while pivoting
         this._shown = false;
 
+        this._pivotSphereEnabled = false;
+        this._pivotSphere = null;
+        this._pivotSphereSize = 1;
+        this._pivotSphereGeometry = null;
+        this._pivotSphereMaterial = null;
+        this._rtcCenter = math.vec3();
+        this._rtcPos = math.vec3();
+
         this._pivotViewPos = math.vec4();
         this._pivotProjPos = math.vec4();
         this._pivotCanvasPos = math.vec2();
@@ -45,7 +58,44 @@ class PivotController {
 
         this._onTick = this._scene.on("tick", () => {
             this.updatePivotElement();
+            this.updatePivotSphere();
         });
+    }
+
+    createPivotSphere() {
+        const currentPos = this.getPivotPos();
+        const cameraPos = math.vec3();
+        math.decomposeMat4(math.inverseMat4(this._scene.viewer.camera.viewMatrix, math.mat4()), cameraPos, math.vec4(), math.vec3());
+        const length = math.distVec3(cameraPos, currentPos);
+        let radius = (Math.tan(Math.PI / 500) * length) * this._pivotSphereSize;
+
+        if (this._scene.camera.projection == "ortho") {
+            radius /= (this._scene.camera.ortho.scale / 2);
+        }
+
+        worldToRTCPos(currentPos, this._rtcCenter, this._rtcPos);
+        this._pivotSphereGeometry = new VBOGeometry(
+            this._scene,
+            buildSphereGeometry({ radius })
+        );
+        this._pivotSphere = new Mesh(this._scene, {
+            geometry: this._pivotSphereGeometry,
+            material: this._pivotSphereMaterial,
+            pickable: false,
+            position: this._rtcPos,
+            rtcCenter: this._rtcCenter
+        });
+    };
+
+    destroyPivotSphere() {
+        if (this._pivotSphere) {
+            this._pivotSphere.destroy();
+            this._pivotSphere = null;
+        }
+        if (this._pivotSphereGeometry) {
+            this._pivotSphereGeometry.destroy();
+            this._pivotSphereGeometry = null;
+        }
     }
 
     updatePivotElement() {
@@ -66,8 +116,15 @@ class PivotController {
             this._pivotCanvasPos[0] = Math.floor((1 + this._pivotProjPos[0] / this._pivotProjPos[3]) * canvasWidth / 2);
             this._pivotCanvasPos[1] = Math.floor((1 - this._pivotProjPos[1] / this._pivotProjPos[3]) * canvasHeight / 2);
 
-            const canvasElem = canvas.canvas;
-            const canvasBoundingRect = canvasElem.getBoundingClientRect();
+            // data-textures: avoid to do continuous DOM layout calculations            
+            let canvasBoundingRect = canvas._lastBoundingClientRect;
+
+            if (!canvasBoundingRect || canvas._canvasSizeChanged)
+            {
+                const canvasElem = canvas.canvas;
+
+                canvasBoundingRect = canvas._lastBoundingClientRect = canvasElem.getBoundingClientRect ();
+            }
 
             if (this._pivotElement) {
                 this._pivotElement.style.left = (Math.floor(canvasBoundingRect.left + this._pivotCanvasPos[0]) - (this._pivotElement.clientWidth / 2) + window.scrollX) + "px";
@@ -77,6 +134,15 @@ class PivotController {
         }
     }
 
+    updatePivotSphere() {
+        if (this._pivoting && this._pivotSphere) {
+            worldToRTCPos(this.getPivotPos(), this._rtcCenter, this._rtcPos);
+            if(!math.compareVec3(this._rtcPos, this._pivotSphere.position)) {
+                this.destroyPivotSphere();
+                this.createPivotSphere();
+            }
+        }
+    }
     /**
      * Sets the HTML DOM element that will represent the pivot position.
      *
@@ -84,6 +150,37 @@ class PivotController {
      */
     setPivotElement(pivotElement) {
         this._pivotElement = pivotElement;
+    }
+
+    /**
+     * Sets a sphere as the representation of the pivot position.
+     *
+     * @param {Object} [cfg] Sphere configuration.
+     * @param {String} [cfg.size=1] Optional size factor of the sphere. Defaults to 1.
+     * @param {String} [cfg.color=Array] Optional maretial color. Defaults to a red.
+     */
+    enablePivotSphere(cfg = {}) {
+        this.destroyPivotSphere();
+        this._pivotSphereEnabled = true;
+        if (cfg.size) {
+            this._pivotSphereSize = cfg.size;
+        }
+        const color = cfg.color || [1, 0, 0];
+        this._pivotSphereMaterial = new PhongMaterial(this._scene, {
+            emissive: color,
+            ambient: color,
+            specular: [0,0,0],
+            diffuse: [0,0,0],
+        });
+    }
+
+    /**
+     * Remove the sphere as the representation of the pivot position.
+     *
+     */
+    disablePivotSphere() {
+        this.destroyPivotSphere();
+        this._pivotSphereEnabled = false;
     }
 
     /**
@@ -135,7 +232,7 @@ class PivotController {
     /**
      * Returns true if we are currently pivoting.
      *
-     * @returns {boolean}
+     * @returns {Boolean}
      */
     getPivoting() {
         return this._pivoting;
@@ -154,6 +251,7 @@ class PivotController {
     /**
      * Sets the pivot position to the 3D projection of the given 2D canvas coordinates on a sphere centered
      * at the viewpoint. The radius of the sphere is configured via {@link CameraControl#smartPivot}.
+     *
      *
      * @param canvasPos
      */
@@ -238,18 +336,15 @@ class PivotController {
         if (this._shown) {
             return;
         }
-        if (this._hideTimeout !== null) {
-            window.clearTimeout(this._hideTimeout);
-            this._hideTimeout = null;
-        }
         if (this._pivotElement) {
             this.updatePivotElement();
             this._pivotElement.style.visibility = "visible";
-            this._shown = true;
-            this._hideTimeout = window.setTimeout(() => {
-                this.hidePivot();
-            }, 1000);
         }
+        if (this._pivotSphereEnabled) {
+            this.destroyPivotSphere();
+            this.createPivotSphere();
+        }
+        this._shown = true;
     }
 
     /**
@@ -261,12 +356,11 @@ class PivotController {
         if (!this._shown) {
             return;
         }
-        if (this._hideTimeout !== null) {
-            window.clearTimeout(this._hideTimeout);
-            this._hideTimeout = null;
-        }
         if (this._pivotElement) {
             this._pivotElement.style.visibility = "hidden";
+        }
+        if (this._pivotSphereEnabled) {
+            this.destroyPivotSphere();
         }
         this._shown = false;
     }
@@ -279,6 +373,7 @@ class PivotController {
     }
 
     destroy() {
+        this.destroyPivotSphere();
         this._scene.camera.off(this._onViewMatrix);
         this._scene.camera.off(this._onProjMatrix);
         this._scene.off(this._onTick);

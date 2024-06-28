@@ -19,15 +19,13 @@ class MetaObject {
     /**
      * @private
      */
-    constructor(metaModel, id, originalSystemId, name, type, propertySets, parent, children, external) {
+    constructor(params) {
 
         /**
-         * Model metadata.
-         *
-         * @property metaModel
-         * @type {MetaModel}
+         * The MetaModels that share this MetaObject.
+         * @type {MetaModel[]}
          */
-        this.metaModel = metaModel;
+        this.metaModels = [];
 
         /**
          * Globally-unique ID.
@@ -37,7 +35,19 @@ class MetaObject {
          * @property id
          * @type {String|Number}
          */
-        this.id = id;
+        this.id = params.id;
+
+        /**
+         * ID of the parent MetaObject.
+         * @type {String|Number}
+         */
+        this.parentId = params.parentId;
+
+        /**
+         * The parent MetaObject.
+         * @type {MetaObject | null}
+         */
+        this.parent = null;
 
         /**
          * ID of the corresponding object within the originating system, if any.
@@ -45,7 +55,7 @@ class MetaObject {
          * @type {String}
          * @abstract
          */
-        this.originalSystemId = originalSystemId;
+        this.originalSystemId = params.originalSystemId;
 
         /**
          * Human-readable name.
@@ -53,7 +63,7 @@ class MetaObject {
          * @property name
          * @type {String}
          */
-        this.name = name;
+        this.name = params.name;
 
         /**
          * Type - often an IFC product type.
@@ -61,44 +71,30 @@ class MetaObject {
          * @property type
          * @type {String}
          */
-        this.type = type;
+        this.type = params.type;
 
         /**
-         * Optional {@link PropertySet}s used by this MetaObject.
+         * IDs of PropertySets associated with this MetaObject.
+         * @type {[]|*}
+         */
+        this.propertySetIds = params.propertySetIds;
+
+        /**
+         * The {@link PropertySet}s associated with this MetaObject.
          *
          * @property propertySets
          * @type {PropertySet[]}
          */
-        this.propertySets = propertySets;
+        this.propertySets = [];
 
-        if (parent !== undefined && parent !== null) {
+        /**
+         * The attributes of this MetaObject.
+         * @type {{}}
+         */
+        this.attributes = params.attributes || {};
 
-            /**
-             * The parent MetaObject within the structure hierarchy.
-             *
-             * Undefined when this is the root of its structure.
-             *
-             * @property parent
-             * @type {MetaObject}
-             */
-            this.parent = parent;
-        }
-
-        if (children !== undefined && children !== null) {
-
-            /**
-             * Child ObjectMeta instances within the structure hierarchy.
-             *
-             * Undefined when there are no children.
-             *
-             * @property children
-             * @type {Array}
-             */
-            this.children = children;
-        }
-
-        if (external !== undefined && external !== null) {
-
+        if (params.external !== undefined && params.external !== null) {
+        
             /**
              * External application-specific metadata
              *
@@ -107,8 +103,22 @@ class MetaObject {
              * @property external
              * @type {*}
              */
-            this.external = external;
+            this.external = params.external;
         }
+    }
+
+    /**
+     * Backwards compatibility with the object belonging to a single MetaModel.
+     * 
+     * @property metaModel
+     * @type {MetaModel|null}
+     **/
+    get metaModel() {
+        if (this.metaModels.length == 1) {
+            return this.metaModels[0];
+        }
+
+        return null;
     }
 
     /**

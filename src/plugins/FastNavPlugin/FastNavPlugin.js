@@ -4,7 +4,7 @@ import {Plugin} from "../../viewer/Plugin.js";
  * {@link Viewer} plugin that makes interaction smoother with large models, by temporarily switching
  * the Viewer to faster, lower-quality rendering modes whenever we interact.
  *
- * [<img src="https://xeokit.io/img/docs/FastNavPlugin/FastNavPlugin.gif">](https://xeokit.github.io/xeokit-sdk/examples/#performance_FastNavPlugin)
+ * [<img src="https://xeokit.io/img/docs/FastNavPlugin/FastNavPlugin.gif">](https://xeokit.github.io/xeokit-sdk/examples/index.html#performance_FastNavPlugin)
  *
  * FastNavPlugin works by hiding specified Viewer rendering features, and optionally scaling the Viewer's canvas
  * resolution, whenever we interact with the Viewer. Then, once we've finished interacting, FastNavPlugin restores those
@@ -38,7 +38,7 @@ import {Plugin} from "../../viewer/Plugin.js";
  * not continually flipping between low and high quality as we interact. Since we're only rendering ambient shadows when not interacting, we'll also treat ourselves
  * to expensive, high-quality SAO settings, that we wouldn't normally configure for an interactive SAO effect.
  *
- * * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/#performance_FastNavPlugin)]
+ * * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/index.html#performance_FastNavPlugin)]
  *
  * ````javascript
  * import {Viewer, XKTLoaderPlugin, FastNavPlugin} from "xeokit-sdk.es.js";
@@ -67,9 +67,11 @@ import {Plugin} from "../../viewer/Plugin.js";
  * new FastNavPlugin(viewer, {
  *      hideEdges: true,                // Don't show edges while we interact (default is true)
  *      hideSAO: true,                  // Don't show ambient shadows while we interact (default is true)
+ *      hideColorTexture: true,        // No color textures while we interact (default is true)
  *      hidePBR: true,                  // No physically-based rendering while we interact (default is true)
  *      hideTransparentObjects: true,   // Hide transparent objects while we interact (default is false)
  *      scaleCanvasResolution: true,    // Scale canvas resolution while we interact (default is false)
+ *      defaultScaleCanvasResolutionFactor: 1.0, // Factor by which we scale canvas resolution when we stop interacting (default is 1.0)
  *      scaleCanvasResolutionFactor: 0.5,  // Factor by which we scale canvas resolution when we interact (default is 0.6)
  *      delayBeforeRestore: true,       // When we stop interacting, delay before restoring normal render (default is true)
  *      delayBeforeRestoreSeconds: 0.5  // The delay duration, in seconds (default is 0.5)
@@ -96,11 +98,13 @@ class FastNavPlugin extends Plugin {
      * @param {Viewer} viewer The Viewer.
      * @param {Object} cfg FastNavPlugin configuration.
      * @param {String} [cfg.id="FastNav"] Optional ID for this plugin, so that we can find it within {@link Viewer#plugins}.
+     * @param {Boolean} [cfg.hideColorTexture=true] Whether to temporarily hide color textures whenever we interact with the Viewer.
      * @param {Boolean} [cfg.hidePBR=true] Whether to temporarily hide physically-based rendering (PBR) whenever we interact with the Viewer.
      * @param {Boolean} [cfg.hideSAO=true] Whether to temporarily hide scalable ambient occlusion (SAO) whenever we interact with the Viewer.
      * @param {Boolean} [cfg.hideEdges=true] Whether to temporarily hide edges whenever we interact with the Viewer.
      * @param {Boolean} [cfg.hideTransparentObjects=false] Whether to temporarily hide transparent objects whenever we interact with the Viewer.
      * @param {Number} [cfg.scaleCanvasResolution=false] Whether to temporarily down-scale the canvas resolution whenever we interact with the Viewer.
+     * @param {Number} [cfg.defaultScaleCanvasResolutionFactor=0.6] The factor by which we downscale the canvas resolution whenever we stop interacting with the Viewer.
      * @param {Number} [cfg.scaleCanvasResolutionFactor=0.6] The factor by which we downscale the canvas resolution whenever we interact with the Viewer.
      * @param {Boolean} [cfg.delayBeforeRestore=true] Whether to temporarily have a delay before restoring normal rendering after we stop interacting with the Viewer.
      * @param {Number} [cfg.delayBeforeRestoreSeconds=0.5] Delay in seconds before restoring normal rendering after we stop interacting with the Viewer.
@@ -109,11 +113,13 @@ class FastNavPlugin extends Plugin {
 
         super("FastNav", viewer);
 
+        this._hideColorTexture = cfg.hideColorTexture !== false;
         this._hidePBR = cfg.hidePBR !== false;
         this._hideSAO = cfg.hideSAO !== false;
         this._hideEdges = cfg.hideEdges !== false;
         this._hideTransparentObjects = !!cfg.hideTransparentObjects;
         this._scaleCanvasResolution = !!cfg.scaleCanvasResolution;
+        this._defaultScaleCanvasResolutionFactor = cfg.defaultScaleCanvasResolutionFactor || 1.0;
         this._scaleCanvasResolutionFactor = cfg.scaleCanvasResolutionFactor || 0.6;
         this._delayBeforeRestore = (cfg.delayBeforeRestore !== false);
         this._delayBeforeRestoreSeconds = cfg.delayBeforeRestoreSeconds || 0.5;
@@ -124,6 +130,7 @@ class FastNavPlugin extends Plugin {
         const switchToLowQuality = () => {
             timer = (this._delayBeforeRestoreSeconds * 1000);
             if (!fastMode) {
+                viewer.scene._renderer.setColorTextureEnabled(!this._hideColorTexture);
                 viewer.scene._renderer.setPBREnabled(!this._hidePBR);
                 viewer.scene._renderer.setSAOEnabled(!this._hideSAO);
                 viewer.scene._renderer.setTransparentEnabled(!this._hideTransparentObjects);
@@ -131,15 +138,16 @@ class FastNavPlugin extends Plugin {
                 if (this._scaleCanvasResolution) {
                     viewer.scene.canvas.resolutionScale = this._scaleCanvasResolutionFactor;
                 } else {
-                    viewer.scene.canvas.resolutionScale = 1;
+                    viewer.scene.canvas.resolutionScale = this._defaultScaleCanvasResolutionFactor;
                 }
                 fastMode = true;
             }
         };
 
         const switchToHighQuality = () => {
-            viewer.scene.canvas.resolutionScale = 1;
+            viewer.scene.canvas.resolutionScale = this._defaultScaleCanvasResolutionFactor;
             viewer.scene._renderer.setEdgesEnabled(true);
+            viewer.scene._renderer.setColorTextureEnabled(true);
             viewer.scene._renderer.setPBREnabled(true);
             viewer.scene._renderer.setSAOEnabled(true);
             viewer.scene._renderer.setTransparentEnabled(true);
@@ -177,6 +185,28 @@ class FastNavPlugin extends Plugin {
         });
     }
 
+    /**
+     * Gets whether to temporarily hide color textures whenever we interact with the Viewer.
+     *
+     * Default is ````true````.
+     *
+     * @return {Boolean} ````true```` if hiding color textures.
+     */
+    get hideColorTexture() {
+        return this._hideColorTexture;
+    }
+
+    /**
+     * Sets whether to temporarily hide color textures whenever we interact with the Viewer.
+     *
+     * Default is ````true````.
+     *
+     * @param {Boolean} hideColorTexture ````true```` to hide color textures.
+     */
+    set hideColorTexture(hideColorTexture) {
+        this._hideColorTexture = hideColorTexture;
+    }
+    
     /**
      * Gets whether to temporarily hide physically-based rendering (PBR) whenever we interact with the Viewer.
      *
@@ -283,7 +313,7 @@ class FastNavPlugin extends Plugin {
     }
 
     /**
-     * Sets whether to temporarily scale the canvas resolution whenever we interact with the Viewer.
+     * Sets the factor to which we restore the canvas resolution scale when we stop interacting with the viewer.
      *
      * Default is ````false````.
      *
@@ -293,6 +323,34 @@ class FastNavPlugin extends Plugin {
      */
     set scaleCanvasResolution(scaleCanvasResolution) {
         this._scaleCanvasResolution = scaleCanvasResolution;
+    }
+
+    /**
+     * Gets the factor to which we restore the canvas resolution scale when we stop interacting with the viewer.
+     *
+     * Default is ````1.0````.
+     *
+     * Enable canvas resolution scaling by setting {@link FastNavPlugin#scaleCanvasResolution} ````true````.
+     *
+     * @return {Number} Factor by scale canvas resolution when we stop interacting with the viewer.
+     */
+    get defaultScaleCanvasResolutionFactor() {
+        return this._defaultScaleCanvasResolutionFactor;
+    }
+
+    /**
+     * Sets the factor to which we restore the canvas resolution scale when we stop interacting with the viewer.
+     *
+     * Accepted range is ````[0.0 .. 1.0]````.
+     *
+     * Default is ````1.0````.
+     *
+     * Enable canvas resolution scaling by setting {@link FastNavPlugin#scaleCanvasResolution} ````true````.
+     *
+     * @param {Number} defaultScaleCanvasResolutionFactor Factor by scale canvas resolution when we stop interacting with the viewer.
+     */
+    set defaultScaleCanvasResolutionFactor(defaultScaleCanvasResolutionFactor) {
+        this._defaultScaleCanvasResolutionFactor = defaultScaleCanvasResolutionFactor || 1.0;
     }
 
     /**

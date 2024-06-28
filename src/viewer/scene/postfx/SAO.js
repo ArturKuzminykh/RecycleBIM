@@ -4,9 +4,9 @@ import {WEBGL_INFO} from "../webglInfo.js";
 /**
  * @desc Configures Scalable Ambient Obscurance (SAO) for a {@link Scene}.
  *
- *  <a href="https://xeokit.github.io/xeokit-sdk/examples/#postEffects_SAO_OTCConferenceCenter"><img src="http://xeokit.io/img/docs/SAO/saoEnabledDisabled.gif"></a>
+ *  <a href="https://xeokit.github.io/xeokit-sdk/examples/index.html#postEffects_SAO_OTCConferenceCenter"><img src="http://xeokit.io/img/docs/SAO/saoEnabledDisabled.gif"></a>
  *
- * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/#postEeffects_SAO_OTCConferenceCenter)]
+ * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/viewer/#sao_ConferenceCenter)]
  *
  * ## Overview
  *
@@ -28,7 +28,7 @@ import {WEBGL_INFO} from "../webglInfo.js";
  * {@link SAO#scale} and {@link SAO#intensity} must be tuned to the distance
  * between {@link Perspective#near} and {@link Perspective#far}, or the distance
  * between {@link Ortho#near} and {@link Ortho#far}, depending on which of those two projections the {@link Camera} is currently
- * using. Use the [live example](https://xeokit.github.io/xeokit-sdk/examples/#postEeffects_SAO_OTCConferenceCenter) to get a
+ * using. Use the [live example](https://xeokit.github.io/xeokit-sdk/examples/viewer/#sao_ConferenceCenter) to get a
  * feel for that.
  *
  * ## Usage
@@ -84,7 +84,7 @@ import {WEBGL_INFO} from "../webglInfo.js";
  * });
  * ````
  *
- * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/#postEeffects_SAO_OTCConferenceCenter)]
+ * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/viewer/#sao_ConferenceCenter)]
  *
  * ## Efficiency
  *
@@ -167,7 +167,7 @@ import {WEBGL_INFO} from "../webglInfo.js";
  * });
  * ````
  *
- * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/#techniques_nonInteractiveQuality)]
+ * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/index.html#techniques_nonInteractiveQuality)]
  */
 class SAO extends Component {
 
@@ -176,11 +176,7 @@ class SAO extends Component {
 
         super(owner, cfg);
 
-        const ua = navigator.userAgent.match(/(opera|chrome|safari|firefox|msie|mobile)\/?\s*(\.?\d+(\.\d+)*)/i);
-        const isSafari = (ua && ua[1].toLowerCase() === "safari");
-
-        this._supported = (!isSafari) &&
-            WEBGL_INFO.SUPPORTED_EXTENSIONS["OES_standard_derivatives"]; // For computing normals in SAO fragment shader
+        this._supported = WEBGL_INFO.SUPPORTED_EXTENSIONS["OES_standard_derivatives"]; // For computing normals in SAO fragment shader
 
         this.enabled = cfg.enabled;
         this.kernelRadius = cfg.kernelRadius;
@@ -240,7 +236,7 @@ class SAO extends Component {
      * Returns true if SAO is currently possible, where it is supported, enabled, and the current scene state is compatible.
      * Called internally by renderer logic.
      * @private
-     * @returns {boolean}
+     * @returns {Boolean}
      */
     get possible() {
         if (!this._supported) {

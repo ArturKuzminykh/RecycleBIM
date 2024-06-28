@@ -1,0 +1,8 @@
+xampp-windows-x64-8.1.2-0-VS16-installer - version 
+Python 3.8.10. May 3 2021
+pip install lark
+pip install ifcopenshell
+pip install numpy (possible, depending on python version)
+
+at upload.php - check $batFilePath (location)
+at convert.bat - check location

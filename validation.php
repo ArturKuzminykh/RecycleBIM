@@ -14,8 +14,9 @@ include_once 'includes/header.php';
         <h4 style="text-align: center;">Validation</h4>
         <input type="radio" id="psets" name="validation" value="psets" checked>Check for missing Property sets<br>
         <input type="radio" id="arrays" name="validation" value="arrays">Check for inconsistent arrays<br>
-        <input type="radio" id="manualqtos" name="validation" value="manualqtos">Show manually estimated elements<br>
+        <input type="radio" id="manualqtos" name="validation" value="manualqtos">Show dangerous elements<br>
         <input type="radio" id="reused" name="validation" value="reused">Show elements that can be reused<br>
+        <input type="radio" id="correctqto" name="validation" value="correctqto">Show unquantifiable elements<br>
 
         <button type="submit" name="show" value="show" style="width: 240px;">
             SHOW THE MODEL | RUN
@@ -43,16 +44,19 @@ include_once 'includes/header.php';
     <?php
             if (isset($_POST['validation'])) {
                 if (($_POST['validation']) == "psets") {
-                    $type_of_script = "psets_lsts.py 2>&1";
+                    $type_of_script = "checkPresenceOfPset.py 2>&1";
                 }
                 if (($_POST['validation']) == "arrays") {
-                    $type_of_script = "arrays_lengths.py 2>&1";
+                    $type_of_script = "checkInconsistentArrays.py 2>&1";
                 }
-                if (($_POST['validation']) == "manualqtos") {
-                    $type_of_script = "manualqtos.py 2>&1";
+                if (($_POST['validation']) == "dangerous") {
+                    $type_of_script = "checkDangerousElements.py 2>&1";
                 }
                 if (($_POST['validation']) == "reused") {
-                    $type_of_script = "reused_elems.py 2>&1";
+                    $type_of_script = "checkReusedElements.py 2>&1";
+                }
+                if (($_POST['validation']) == "correctqto") {
+                    $type_of_script = "checkQtoPossibility.py 2>&1";
                 }
                 
             }

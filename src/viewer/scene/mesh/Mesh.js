@@ -5,6 +5,7 @@
  @event picked
  */
 import {math} from '../math/math.js';
+import {createRTCViewMat} from '../math/rtcCoords.js';
 import {Component} from '../Component.js';
 import {RenderState} from '../webgl/RenderState.js';
 import {DrawRenderer} from "./draw/DrawRenderer.js";
@@ -50,7 +51,7 @@ const identityMat = math.identityMat4();
  *
  * We can also update properties of our object-Meshes via calls to {@link Scene#setObjectsHighlighted} etc.
  *
- * [[Run this example](http://xeokit.github.io/xeokit-sdk/examples/#sceneRepresentation_SceneGraph)]
+ * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/scenegraph/#sceneGraph)]
  *
  * ````javascript
  * import {Viewer, Mesh, Node, PhongMaterial, buildBoxGeometry, ReadableGeometry} from "xeokit-sdk.es.js";
@@ -720,7 +721,7 @@ class Mesh extends Component {
         visible = visible !== false;
         this._state.visible = visible;
         if (this._isObject) {
-            this.scene._objectVisibilityUpdated(this);
+            this.scene._objectVisibilityUpdated(this, visible);
         }
         this.glRedraw();
     }
@@ -756,7 +757,7 @@ class Mesh extends Component {
         }
         this._state.xrayed = xrayed;
         if (this._isObject) {
-            this.scene._objectXRayedUpdated(this);
+            this.scene._objectXRayedUpdated(this, xrayed);
         }
         this.glRedraw();
     }
@@ -792,7 +793,7 @@ class Mesh extends Component {
         }
         this._state.highlighted = highlighted;
         if (this._isObject) {
-            this.scene._objectHighlightedUpdated(this);
+            this.scene._objectHighlightedUpdated(this, highlighted);
         }
         this.glRedraw();
     }
@@ -828,7 +829,7 @@ class Mesh extends Component {
         }
         this._state.selected = selected;
         if (this._isObject) {
-            this.scene._objectSelectedUpdated(this);
+            this.scene._objectSelectedUpdated(this, selected);
         }
         this.glRedraw();
     }
@@ -1355,7 +1356,7 @@ class Mesh extends Component {
         if (!this._aabb) {
             this._aabb = math.AABB3();
         }
-        this._buildAABB(this.worldMatrix, this._aabb); // Mesh or PerformanceModel
+        this._buildAABB(this.worldMatrix, this._aabb); // Mesh or VBOSceneModel
         this._aabbDirty = false;
     }
 
@@ -1925,20 +1926,21 @@ class Mesh extends Component {
         if (this._isObject) {
             this.scene._deregisterObject(this);
             if (this._visible) {
-                this.scene._objectVisibilityUpdated(this, false);
+                this.scene._objectVisibilityUpdated(this, false, false);
             }
             if (this._xrayed) {
-                this.scene._objectXRayedUpdated(this, false);
+                this.scene._objectXRayedUpdated(this, false, false);
             }
             if (this._selected) {
-                this.scene._objectSelectedUpdated(this, false);
+                this.scene._objectSelectedUpdated(this, false, false);
             }
             if (this._highlighted) {
-                this.scene._objectHighlightedUpdated(this, false);
+                this.scene._objectHighlightedUpdated(this, false, false);
             }
             this.scene._objectColorizeUpdated(this, false);
             this.scene._objectOpacityUpdated(this, false);
-            this.scene._objectOffsetUpdated(this, false);
+            if (this.offset.some((v) => v !== 0))
+                this.scene._objectOffsetUpdated(this, false);
         }
         if (this._isModel) {
             this.scene._deregisterModel(this);
@@ -2062,11 +2064,8 @@ const pickTriangleSurface = (function () {
 
                 // Attempt to ray-pick the triangle in local space
 
-                let canvasPos;
-
                 if (pickResult.canvasPos) {
-                    canvasPos = pickResult.canvasPos;
-                    math.canvasPosToLocalRay(canvas.canvas, pickViewMatrix, pickProjMatrix, mesh.worldMatrix, canvasPos, localRayOrigin, localRayDir);
+                    math.canvasPosToLocalRay(canvas.canvas, mesh.origin ? createRTCViewMat(pickViewMatrix, mesh.origin) : pickViewMatrix, pickProjMatrix, mesh.worldMatrix, pickResult.canvasPos, localRayOrigin, localRayDir);
 
                 } else if (pickResult.origin && pickResult.direction) {
                     math.worldRayToLocalRay(mesh.worldMatrix, pickResult.origin, pickResult.direction, localRayOrigin, localRayDir);
@@ -2096,6 +2095,12 @@ const pickTriangleSurface = (function () {
                 worldPos[0] = tempVec4b[0];
                 worldPos[1] = tempVec4b[1];
                 worldPos[2] = tempVec4b[2];
+
+                if (pickResult.canvasPos && mesh.origin) {
+                    worldPos[0] += mesh.origin[0];
+                    worldPos[1] += mesh.origin[1];
+                    worldPos[2] += mesh.origin[2];
+                }
 
                 pickResult.worldPos = worldPos;
 
