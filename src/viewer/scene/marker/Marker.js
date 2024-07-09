@@ -1,7 +1,7 @@
 import {math} from '../math/math.js';
 import {Component} from '../Component.js';
-import {PerformanceNode} from "../PerformanceModel/lib/PerformanceNode.js";
 import {worldToRTCPos} from "../math/rtcCoords.js";
+import {SceneModelEntity} from "../model/SceneModelEntity.js";
 
 const tempVec4a = math.vec4();
 const tempVec4b = math.vec4();
@@ -38,8 +38,6 @@ const tempVec4b = math.vec4();
  * We'll also demonstrate how to query the Marker's visibility status and position (in the World, View and
  * Canvas coordinate systems), and how to subscribe to change events on those properties.
  *
- * [[Run this example](http://xeokit.github.io/xeokit-sdk/examples/#Markers_SimpleExample)]
- *
  * ````javascript
  * import {Viewer, GLTFLoaderPlugin, Marker} from "xeokit-sdk.es.js";
  *
@@ -67,7 +65,7 @@ const tempVec4b = math.vec4();
  * });
  *
  * // Create the Marker, associated with our Mesh Entity
- * const myMarker = new Marker({
+ * const myMarker = new Marker(viewer, {
  *      entity: entity,
  *      worldPos: [10,0,0],
  *      occludable: true
@@ -198,7 +196,7 @@ class Marker extends Component {
                 return;
             }
             if (this._onEntityDestroyed !== null) {
-                this._entity.off(this._onEntityDestroyed);
+                this._entity.model.off(this._onEntityDestroyed);
                 this._onEntityDestroyed = null;
             }
             if (this._onEntityModelDestroyed !== null) {
@@ -208,13 +206,13 @@ class Marker extends Component {
         }
         this._entity = entity;
         if (this._entity) {
-            if (this._entity instanceof PerformanceNode) {
-                this._onEntityModelDestroyed = this._entity.model.on("destroyed", () => { // PerformanceNode does not fire events, and cannot exist beyond its PerformanceModel
+            if (this._entity instanceof SceneModelEntity) {
+                this._onEntityModelDestroyed = this._entity.model.on("destroyed", () => { // SceneModelEntity does not fire events, and cannot exist beyond its VBOSceneModel
                     this._entity = null; // Marker now may become visible, if it was synched to invisible Entity
                     this._onEntityModelDestroyed = null;
                 });
             } else {
-                this._onEntityDestroyed = this._entity.on("destroyed", () => {
+                this._onEntityDestroyed = this._entity.model.on("destroyed", () => {
                     this._entity = null;
                     this._onEntityDestroyed = null;
                 });
@@ -248,6 +246,9 @@ class Marker extends Component {
             return;
         }
         this._occludable = occludable;
+        if (this._occludable) {
+            this._renderer.markerWorldPosUpdated(this);
+        }
     }
 
     /**
@@ -276,6 +277,7 @@ class Marker extends Component {
         }
         this._viewPosDirty = true;
         this.fire("worldPos", this._worldPos);
+        this._needUpdate();
     }
 
     /**

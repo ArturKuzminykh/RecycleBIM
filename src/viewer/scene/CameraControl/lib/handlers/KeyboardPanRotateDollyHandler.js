@@ -36,13 +36,14 @@ class KeyboardPanRotateDollyHandler {
             if (!(configs.active && configs.pointerEnabled) || (!scene.input.keyboardEnabled)) {
                 return;
             }
-            if (!states.mouseover) {
-                return;
-            }
             keyDownMap[keyCode] = false;
 
             if (keyCode === input.KEY_SHIFT) {
                 canvas.style.cursor = null;
+            }
+
+            if (controllers.pivotController.getPivoting()) {
+                controllers.pivotController.endPivot()
             }
         });
 

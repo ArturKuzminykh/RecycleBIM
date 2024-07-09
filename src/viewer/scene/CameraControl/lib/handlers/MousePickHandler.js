@@ -45,70 +45,78 @@ class MousePickHandler {
             }
         };
 
-        canvas.addEventListener("mousemove", this._canvasMouseMoveHandler = (e) => {
+        const tickifiedMouseMoveFn = scene.tickify (
+            this._canvasMouseMoveHandler = (e) => {
+                if (!(configs.active && configs.pointerEnabled)) {
+                    return;
+                }
 
-            if (!(configs.active && configs.pointerEnabled)) {
-                return;
-            }
+                if (leftDown || rightDown) {
+                    return;
+                }
 
-            if (leftDown || rightDown) {
-                return;
-            }
+                const hoverSubs = cameraControl.hasSubs("hover");
+                const hoverEnterSubs = cameraControl.hasSubs("hoverEnter");
+                const hoverOutSubs = cameraControl.hasSubs("hoverOut");
+                const hoverOffSubs = cameraControl.hasSubs("hoverOff");
+                const hoverSurfaceSubs = cameraControl.hasSubs("hoverSurface");
+                const hoverSnapOrSurfaceSubs = cameraControl.hasSubs("hoverSnapOrSurface");
 
-            const hoverSubs = cameraControl.hasSubs("hover");
-            const hoverOutSubs = cameraControl.hasSubs("hoverOut");
-            const hoverOffSubs = cameraControl.hasSubs("hoverOff");
-            const hoverSurfaceSubs = cameraControl.hasSubs("hoverSurface");
+                if (hoverSubs || hoverEnterSubs || hoverOutSubs || hoverOffSubs || hoverSurfaceSubs || hoverSnapOrSurfaceSubs) {
 
-            if (hoverSubs || hoverOutSubs || hoverOffSubs || hoverSurfaceSubs) {
+                    pickController.pickCursorPos = states.pointerCanvasPos;
+                    pickController.schedulePickEntity = true;
+                    pickController.schedulePickSurface = hoverSurfaceSubs;
+                    pickController.scheduleSnapOrPick = hoverSnapOrSurfaceSubs
 
-                pickController.pickCursorPos = states.pointerCanvasPos;
-                pickController.schedulePickEntity = true;
-                pickController.schedulePickSurface = hoverSurfaceSubs;
+                    pickController.update();
 
-                pickController.update();
+                    if (pickController.pickResult) {
 
-                if (pickController.pickResult) {
+                        if (pickController.pickResult.entity) {
+                            const pickedEntityId = pickController.pickResult.entity.id;
 
-                    const pickedEntityId = pickController.pickResult.entity.id;
+                            if (this._lastPickedEntityId !== pickedEntityId) {
 
-                    if (this._lastPickedEntityId !== pickedEntityId) {
+                                if (this._lastPickedEntityId !== undefined) {
+
+                                    cameraControl.fire("hoverOut", { // Hovered off an entity
+                                        entity: scene.objects[this._lastPickedEntityId]
+                                    }, true);
+                                }
+
+                                cameraControl.fire("hoverEnter", pickController.pickResult, true); // Hovering over a new entity
+
+                                this._lastPickedEntityId = pickedEntityId;
+                            }
+                        }
+
+                        cameraControl.fire("hover", pickController.pickResult, true);
+
+                        if (pickController.pickResult.worldPos || pickController.pickResult.snappedWorldPos) { // Hovering the surface of an entity
+                            cameraControl.fire("hoverSurface", pickController.pickResult, true);
+                        }
+
+                    } else {
 
                         if (this._lastPickedEntityId !== undefined) {
 
                             cameraControl.fire("hoverOut", { // Hovered off an entity
                                 entity: scene.objects[this._lastPickedEntityId]
                             }, true);
+
+                            this._lastPickedEntityId = undefined;
                         }
 
-                        cameraControl.fire("hoverEnter", pickController.pickResult, true); // Hovering over a new entity
-
-                        this._lastPickedEntityId = pickedEntityId;
-                    }
-
-                    cameraControl.fire("hover", pickController.pickResult, true);
-
-                    if (pickController.pickResult.worldPos) { // Hovering the surface of an entity
-                        cameraControl.fire("hoverSurface", pickController.pickResult, true);
-                    }
-
-                } else {
-
-                    if (this._lastPickedEntityId !== undefined) {
-
-                        cameraControl.fire("hoverOut", { // Hovered off an entity
-                            entity: scene.objects[this._lastPickedEntityId]
+                        cameraControl.fire("hoverOff", { // Not hovering on any entity
+                            canvasPos: pickController.pickCursorPos
                         }, true);
-
-                        this._lastPickedEntityId = undefined;
                     }
-
-                    cameraControl.fire("hoverOff", { // Not hovering on any entity
-                        canvasPos: pickController.pickCursorPos
-                    }, true);
                 }
             }
-        });
+        );
+
+        canvas.addEventListener("mousemove", tickifiedMouseMoveFn);
 
         canvas.addEventListener('mousedown', this._canvasMouseDownHandler = (e) => {
 
@@ -169,6 +177,10 @@ class MousePickHandler {
 
             if (e.which === 3) {
                 rightDown = false;
+            }
+
+            if (pivotController.getPivoting()) {
+                pivotController.endPivot();
             }
         });
 
@@ -236,23 +248,26 @@ class MousePickHandler {
 
             if (this._clicks === 1) { // First click
 
+                pickController.pickCursorPos = states.pointerCanvasPos;
+                pickController.schedulePickEntity = configs.doublePickFlyTo;
+                pickController.schedulePickSurface = pickedSurfaceSubs;
+                pickController.update();
+
+                const firstClickPickResult = pickController.pickResult;
+                const firstClickPickSurface = pickController.pickedSurface;
+
                 this._timeout = setTimeout(() => {
 
-                    pickController.pickCursorPos = states.pointerCanvasPos;
-                    pickController.schedulePickEntity = configs.doublePickFlyTo;
-                    pickController.schedulePickSurface = pickedSurfaceSubs;
-                    pickController.update();
+                    if (firstClickPickResult) {
 
-                    if (pickController.pickResult) {
+                        cameraControl.fire("picked", firstClickPickResult, true);
 
-                        cameraControl.fire("picked", pickController.pickResult, true);
+                        if (firstClickPickSurface) {
 
-                        if (pickController.pickedSurface) {
-
-                            cameraControl.fire("pickedSurface", pickController.pickResult, true);
+                            cameraControl.fire("pickedSurface", firstClickPickResult, true);
 
                             if ((!configs.firstPerson) && configs.followPointer) {
-                                controllers.pivotController.setPivotPos(pickController.pickResult.worldPos);
+                                controllers.pivotController.setPivotPos(firstClickPickResult.worldPos);
                                 if (controllers.pivotController.startPivot()) {
                                     controllers.pivotController.showPivot();
                                 }
@@ -266,7 +281,7 @@ class MousePickHandler {
 
                     this._clicks = 0;
 
-                }, 250);  // FIXME: Too short for track pads
+                }, configs.doubleClickTimeFrame);
 
             } else { // Second click
 

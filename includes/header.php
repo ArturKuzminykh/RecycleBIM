@@ -23,7 +23,7 @@ session_start();
       <ul>
       <a href="index.php"><img src='img/Logo.jpg' alt='R-BIM logo' style="height:40px;float:left; position:relative; top:10px; left:20px " ></a>
         
-        <li><a href="#">MANUAL</a></li>
+        <li><a href="manual.php">MANUAL</a></li>
         <?php
         if (isset($_SESSION["useruid"])) {
           echo '<li><a href="viewer.php">UPLOAD & VIEW THE PROJECT</a></li>';

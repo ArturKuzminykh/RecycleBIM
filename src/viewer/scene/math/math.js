@@ -3,6 +3,8 @@
 let doublePrecision = true;
 let FloatArrayType = doublePrecision ? Float64Array : Float32Array;
 
+const tempVec3a = new FloatArrayType(3);
+
 const tempMat1 = new FloatArrayType(16);
 const tempMat2 = new FloatArrayType(16);
 const tempVec4 = new FloatArrayType(4);
@@ -25,6 +27,8 @@ const math = {
     MIN_DOUBLE: -Number.MAX_SAFE_INTEGER,
     MAX_DOUBLE: Number.MAX_SAFE_INTEGER,
 
+    MAX_INT: 10000000,
+
     /**
      * The number of radiians in a degree (0.0174532925).
      * @property DEGTORAD
@@ -46,6 +50,21 @@ const math = {
 
     globalizeObjectId(modelId, objectId) {
         return (modelId + "#" + objectId)
+    },
+
+    /**
+     * Returns:
+     * - x != 0 => 1/x,
+     * - x == 1 => 1
+     *
+     * @param {number} x
+     */
+    safeInv(x) {
+        const retVal = 1 / x;
+        if (isNaN(retVal) || !isFinite(retVal)) {
+            return 1;
+        }
+        return retVal;
     },
 
     /**
@@ -224,7 +243,7 @@ const math = {
      * Returns true if the two 3-element vectors are the same.
      * @param v1
      * @param v2
-     * @returns {boolean}
+     * @returns {Boolean}
      */
     compareVec3(v1, v2) {
         return (v1[0] === v2[0] && v1[1] === v2[1] && v1[2] === v2[2]);
@@ -1665,30 +1684,6 @@ const math = {
      * @param z
      * @param m
      */
-    OLDtranslateMat4c(x, y, z, m) {
-
-        const m12 = m[12];
-        m[0] += m12 * x;
-        m[4] += m12 * y;
-        m[8] += m12 * z;
-
-        const m13 = m[13];
-        m[1] += m13 * x;
-        m[5] += m13 * y;
-        m[9] += m13 * z;
-
-        const m14 = m[14];
-        m[2] += m14 * x;
-        m[6] += m14 * y;
-        m[10] += m14 * z;
-
-        const m15 = m[15];
-        m[3] += m15 * x;
-        m[7] += m15 * y;
-        m[11] += m15 * z;
-
-        return m;
-    },
 
     translateMat4c(x, y, z, m) {
 
@@ -2404,7 +2399,7 @@ const math = {
      * Returns true if the two 4x4 matrices are the same.
      * @param m1
      * @param m2
-     * @returns {boolean}
+     * @returns {Boolean}
      */
     compareMat4(m1, m2) {
         return m1[0] === m2[0] &&
@@ -2635,6 +2630,24 @@ const math = {
         dest[2] = m[2] * v0 + m[6] * v1 + m[10] * v2 + m[14] * v3;
         dest[3] = m[3] * v0 + m[7] * v1 + m[11] * v2 + m[15] * v3;
         return dest;
+    },
+
+    /**
+     * Rotate a 2D vector around a center point.
+     *
+     * @param a
+     * @param center
+     * @param angle
+     * @returns {math}
+     */
+    rotateVec2(a, center, angle, dest = a) {
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+        const x = a[0] - center[0];
+        const y = a[1] - center[1];
+        dest[0] = x * c - y * s + center[0];
+        dest[1] = x * s + y * c + center[1];
+        return a;
     },
 
     /**
@@ -3293,7 +3306,7 @@ const math = {
     /** Returns true if the first AABB contains the second AABB.
      * @param aabb1
      * @param aabb2
-     * @returns {boolean}
+     * @returns {Boolean}
      */
     containsAABB3: function (aabb1, aabb2) {
         const result = (
@@ -5348,5 +5361,26 @@ math.buildEdgeIndices = (function () {
     };
 })();
 
+
+/**
+ * Returns `true` if a plane clips the given 3D positions.
+ * @param {Number[]} pos Position in plane
+ * @param {Number[]} dir Direction of plane
+ * @param {number} positions Flat array of 3D positions.
+ * @param {number} numElementsPerPosition Number of elements perposition - usually either 3 or 4.
+ * @returns {boolean}
+ */
+math.planeClipsPositions3 = function (pos, dir, positions, numElementsPerPosition = 3) {
+    for (let i = 0, len = positions.length; i < len; i += numElementsPerPosition) {
+        tempVec3a[0] = positions[i + 0] - pos[0];
+        tempVec3a[1] = positions[i + 1] - pos[1];
+        tempVec3a[2] = positions[i + 2] - pos[2];
+        let dotProduct = tempVec3a[0] * dir[0] + tempVec3a[1] * dir[1] + tempVec3a[2] * dir[2];
+        if (dotProduct < 0) {
+            return true;
+        }
+    }
+    return false;
+}
 
 export {math};

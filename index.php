@@ -6,7 +6,7 @@ include_once 'includes/header.php'
 <br>
     <?php
         if (isset($_SESSION["useruid"])) {
-            echo '<p>Hello, '.$_SESSION["useruid"] .'. Welcome to the RecycleBIM Platform! Please, check the manual before starting to use the platform. We wish you a nice experience here</p>';
+            echo '<p>Hello, <b>'.$_SESSION["useruid"] .'</b>. Welcome to the RecycleBIM Platform! Please, check the manual before starting to use the platform. We wish you a nice experience here</p>';
             
         } 
     ?>

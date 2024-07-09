@@ -42,7 +42,7 @@ class Ortho extends Component {
             inverseMatrix: math.mat4(),
             transposedMatrix: math.mat4(),
             near: 0.1,
-            far: 2000.0
+            far: 10000.0
         });
 
         this._inverseMatrixDirty = true;
@@ -64,7 +64,7 @@ class Ortho extends Component {
         const scale = this._scale;
         const halfSize = 0.5 * scale;
 
-        const boundary = scene.viewport.boundary;
+        const boundary = scene.canvas.boundary;
         const boundaryWidth = boundary[WIDTH_INDEX];
         const boundaryHeight = boundary[HEIGHT_INDEX];
         const aspect = boundaryWidth / boundaryHeight;
@@ -168,12 +168,12 @@ class Ortho extends Component {
      *
      * Fires a "far" event on change.
      *
-     * Default value is ````2000.0````.
+     * Default value is ````10000.0````.
      *
      * @param {Number} value New far ortho plane position.
      */
     set far(value) {
-        const far = (value !== undefined && value !== null) ? value : 2000.0;
+        const far = (value !== undefined && value !== null) ? value : 10000.0;
         if (this._state.far === far) {
             return;
         }

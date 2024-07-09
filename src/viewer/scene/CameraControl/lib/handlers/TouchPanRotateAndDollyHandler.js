@@ -48,6 +48,10 @@ class TouchPanRotateAndDollyHandler {
             waitForTick = false;
         });
 
+        let firstDragDeltaX = 0;
+        let firstDragDeltaY = 1;
+        let absorbTinyFirstDrag = false;
+
         canvas.addEventListener("touchstart", this._canvasTouchStartHandler = (event) => {
 
             if (!(configs.active && configs.pointerEnabled)) {
@@ -113,6 +117,15 @@ class TouchPanRotateAndDollyHandler {
             numTouches = touches.length;
         });
 
+        canvas.addEventListener("touchend", this._canvasTouchEndHandler = () => {
+            if (pivotController.getPivoting()) {
+                pivotController.endPivot()
+            }
+            firstDragDeltaX = 0;
+            firstDragDeltaY = 0;
+            absorbTinyFirstDrag = true;
+        })
+
         canvas.addEventListener("touchmove", this._canvasTouchMoveHandler = (event) => {
 
             if (!(configs.active && configs.pointerEnabled)) {
@@ -132,8 +145,8 @@ class TouchPanRotateAndDollyHandler {
             // Scaling drag-rotate to canvas boundary
 
             const canvasBoundary = scene.canvas.boundary;
-            const canvasWidth = canvasBoundary[2] - canvasBoundary[0];
-            const canvasHeight = canvasBoundary[3] - canvasBoundary[1];
+            const canvasWidth = canvasBoundary[2];
+            const canvasHeight = canvasBoundary[3];
 
             const touches = event.touches;
 
@@ -185,8 +198,20 @@ class TouchPanRotateAndDollyHandler {
                     }
 
                 } else {
-                    updates.rotateDeltaY -= (xPanDelta / canvasWidth) * (configs.dragRotationRate * 1.0); // Full horizontal rotation
-                    updates.rotateDeltaX += (yPanDelta / canvasHeight) * (configs.dragRotationRate * 1.5); // Half vertical rotation
+                  //  if (!absorbTinyFirstDrag) {
+                        updates.rotateDeltaY -= (xPanDelta / canvasWidth) * (configs.dragRotationRate * 1.0); // Full horizontal rotation
+                        updates.rotateDeltaX += (yPanDelta / canvasHeight) * (configs.dragRotationRate * 1.5); // Half vertical rotation
+                    // } else {
+                    //     firstDragDeltaY -= (xPanDelta / canvasWidth) * (configs.dragRotationRate * 1.0); // Full horizontal rotation
+                    //     firstDragDeltaX += (yPanDelta / canvasHeight) * (configs.dragRotationRate * 1.5); // Half vertical rotation
+                    //     if (Math.abs(firstDragDeltaX) > 5 || Math.abs(firstDragDeltaY) > 5) {
+                    //         updates.rotateDeltaX += firstDragDeltaX;
+                    //         updates.rotateDeltaY += firstDragDeltaY;
+                    //         firstDragDeltaX = 0;
+                    //         firstDragDeltaY = 0;
+                    //         absorbTinyFirstDrag = false;
+                    //     }
+                    // }
                 }
 
             } else if (numTouches === 2) {
@@ -254,6 +279,7 @@ class TouchPanRotateAndDollyHandler {
     destroy() {
         const canvas = this._scene.canvas.canvas;
         canvas.removeEventListener("touchstart", this._canvasTouchStartHandler);
+        canvas.removeEventListener("touchend", this._canvasTouchEndHandler);
         canvas.removeEventListener("touchmove", this._canvasTouchMoveHandler);
         this._scene.off(this._onTick);
     }

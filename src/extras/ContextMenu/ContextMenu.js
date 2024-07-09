@@ -47,9 +47,9 @@ class Item {
 /**
  * @desc A customizable HTML context menu.
  *
- * [<img src="http://xeokit.io/img/docs/ContextMenu/ContextMenu.gif">](https://xeokit.github.io/xeokit-sdk/examples/#ContextMenu_Canvas_TreeViewPlugin_Custom)
+ * [<img src="http://xeokit.io/img/docs/ContextMenu/ContextMenu.gif">](https://xeokit.github.io/xeokit-sdk/examples/index.html#ContextMenu_Canvas_TreeViewPlugin_Custom)
  *
- * * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/#ContextMenu_Canvas_TreeViewPlugin_Custom)]
+ * * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/index.html#ContextMenu_Canvas_TreeViewPlugin_Custom)]
  *
  * ## Overview
  *
@@ -58,7 +58,7 @@ class Item {
  * * Dynamically enable or disable items
  * * Dynamically show or hide items
  * * Supports cascading sub-menus
- * * Configure custom style with custom CSS (see examples above)
+ * * Configure custom style with CSS (see examples above)
  *
  * ## Usage
  *
@@ -92,7 +92,7 @@ class Item {
  *
  * We'll also initially enable the ````ContextMenu````.
  *
- * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/#ContextMenu_Canvas_Custom)]
+ * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/index.html#ContextMenu_Canvas_Custom)]
  *
  * ````javascript
  * const canvasContextMenu = new ContextMenu({
@@ -183,7 +183,7 @@ class Item {
  * In the example below, we'll create a simple ````ContextMenu```` that allows us to toggle the selection of an object
  * via its first item, which changes text depending on whether we are selecting or deselecting the object.
  *
- * [[Run an example](https://xeokit.github.io/xeokit-sdk/examples/#ContextMenu_dynamicItemTitles)]
+ * [[Run an example](https://xeokit.github.io/xeokit-sdk/examples/index.html#ContextMenu_dynamicItemTitles)]
  *
  * ````javascript
  * const canvasContextMenu = new ContextMenu({
@@ -224,7 +224,7 @@ class Item {
  * Note that our "Effects" item has no ````doAction```` callback, because an item with a sub-menu performs no
  * action of its own.
  *
- * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/#ContextMenu_subMenus)]
+ * [[Run this example](https://xeokit.github.io/xeokit-sdk/examples/index.html#ContextMenu_subMenus)]
  *
  * ````javascript
  * const canvasContextMenu = new ContextMenu({
@@ -281,6 +281,7 @@ class ContextMenu {
      * @param {Object} [cfg.context] The context, which is passed into the item callbacks. This can also be dynamically set on {@link ContextMenu#context}. This must be set before calling {@link ContextMenu#show}.
      * @param {Boolean} [cfg.enabled=true] Whether this ````ContextMenu```` is initially enabled. {@link ContextMenu#show} does nothing while this is ````false````.
      * @param {Boolean} [cfg.hideOnMouseDown=true] Whether this ````ContextMenu```` automatically hides whenever we mouse-down or tap anywhere in the page.
+     * @param {Boolean} [cfg.hideOnAction=true] Whether this ````ContextMenu```` automatically hides after we select a menu item. Se false if we want the menu to remain shown and show any updates to its item titles, after we've selected an item.
      */
     constructor(cfg = {}) {
 
@@ -318,6 +319,8 @@ class ContextMenu {
         if (cfg.items) {
             this.items = cfg.items;
         }
+
+        this._hideOnAction = (cfg.hideOnAction !== false);
 
         this.context = cfg.context;
         this.enabled = cfg.enabled !== false;
@@ -578,7 +581,7 @@ class ContextMenu {
     }
 
     _getNextId() { // Returns a unique ID
-        return "ContextMenu_" + this._id + "" + this._nextId++; // Start ID with alpha chars to make a valid DOM element selector
+        return "ContextMenu_" + this._id + "_" + this._nextId++; // Start ID with alpha chars to make a valid DOM element selector
     }
 
     _createUI() { // Builds DOM elements for the entire menu tree
@@ -704,9 +707,7 @@ class ContextMenu {
 
                         item.itemElement.addEventListener("mouseenter", (event) => {
                             event.preventDefault();
-                            if (item.enabled === false) {
-                                return;
-                            }
+
                             const subMenu = item.subMenu;
                             if (!subMenu) {
                                 if (lastSubMenu) {
@@ -718,6 +719,10 @@ class ContextMenu {
                             if (lastSubMenu && (lastSubMenu.id !== subMenu.id)) {
                                 self._hideMenu(lastSubMenu.id);
                                 lastSubMenu = null;
+                            }
+
+                            if (item.enabled === false) {
+                                return;
                             }
 
                             const itemElement = item.itemElement;
@@ -745,7 +750,6 @@ class ContextMenu {
 
                             item.itemElement.addEventListener("click", (event) => {
                                 event.preventDefault();
-                                self.hide();
                                 if (!self._context) {
                                     return;
                                 }
@@ -755,9 +759,34 @@ class ContextMenu {
                                 if (item.doAction) {
                                     item.doAction(self._context);
                                 }
+                                if (this._hideOnAction) {
+                                    self.hide();
+                                } else {
+                                    self._updateItemsTitles();
+                                    self._updateItemsEnabledStatus();
+                                }
                             });
-
-
+                            item.itemElement.addEventListener("mouseup", (event) => {
+                                if (event.which !== 3) {
+                                    return;
+                                }
+                                event.preventDefault();
+                                if (!self._context) {
+                                    return;
+                                }
+                                if (item.enabled === false) {
+                                    return;
+                                }
+                                if (item.doAction) {
+                                    item.doAction(self._context);
+                                }
+                                if (this._hideOnAction) {
+                                    self.hide();
+                                } else {
+                                    self._updateItemsTitles();
+                                    self._updateItemsEnabledStatus();
+                                }
+                            });
                             item.itemElement.addEventListener("mouseenter", (event) => {
                                 event.preventDefault();
                                 if (item.enabled === false) {

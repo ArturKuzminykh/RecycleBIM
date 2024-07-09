@@ -3,7 +3,7 @@
 $servername = "localhost";
 $dBusername = "root";
 $dBPassword = "";
-$dBName = "phpproject01";
+$dBName = "recyclebim";
 
 $conn = mysqli_connect($servername, $dBusername, $dBPassword, $dBName);
 

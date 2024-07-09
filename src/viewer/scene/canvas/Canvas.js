@@ -1,12 +1,10 @@
-import {core} from "../core.js";
+
 import {math} from '../math/math.js';
-import {stats} from '../stats.js';
 import {Component} from '../Component.js';
 import {Spinner} from './Spinner.js';
-import {WEBGL_INFO} from '../webglInfo.js';
 
 const WEBGL_CONTEXT_NAMES = [
-    "webgl",
+    "webgl2",
     "experimental-webgl",
     "webkit-3d",
     "moz-webgl",
@@ -108,7 +106,7 @@ class Canvas extends Component {
          * ````
          *
          * @property boundary
-         * @type {{Number[]}}
+         * @type {Number[]}
          * @final
          */
         this.boundary = [
@@ -152,95 +150,39 @@ class Canvas extends Component {
             },
             false);
 
-        // Publish canvas size and position changes on each scene tick
+        // Attach to resize events on the canvas
+        let dirtyBoundary = true; // make sure we publish the 1st boundary event
 
-        let lastResolutionScale = null;
-
-        let lastWindowWidth = null;
-        let lastWindowHeight = null;
-
-        let lastCanvasWidth = null;
-        let lastCanvasHeight = null;
-
-        let lastCanvasOffsetLeft = null;
-        let lastCanvasOffsetTop = null;
-
-        let lastParent = null;
-
-        this._tick = this.scene.on("tick", () => {
-
-            const canvas = this.canvas;
-
-            const newResolutionScale = (this._resolutionScale !== lastResolutionScale);
-            const newWindowSize = (window.innerWidth !== lastWindowWidth || window.innerHeight !== lastWindowHeight);
-            const newCanvasSize = (canvas.clientWidth !== lastCanvasWidth || canvas.clientHeight !== lastCanvasHeight);
-            const newCanvasPos = (canvas.offsetLeft !== lastCanvasOffsetLeft || canvas.offsetTop !== lastCanvasOffsetTop);
-
-            const parent = canvas.parentElement;
-            const newParent = (parent !== lastParent);
-
-            if (newResolutionScale || newWindowSize || newCanvasSize || newCanvasPos || newParent) {
-
-                this._spinner._adjustPosition();
-
-                if (newResolutionScale || newCanvasSize || newCanvasPos) {
-
-                    const newWidth = canvas.clientWidth;
-                    const newHeight = canvas.clientHeight;
-
-                    // TODO: Wasteful to re-count pixel size of each canvas on each canvas' resize
-                    if (newResolutionScale || newCanvasSize) {
-                        let countPixels = 0;
-                        let scene;
-                        for (const sceneId in core.scenes) {
-                            if (core.scenes.hasOwnProperty(sceneId)) {
-                                scene = core.scenes[sceneId];
-                                countPixels += Math.round((scene.canvas.canvas.clientWidth * this._resolutionScale) * (scene.canvas.canvas.clientHeight * this._resolutionScale));
-                            }
-                        }
-                        stats.memory.pixels = countPixels;
-
-                        canvas.width = Math.round(canvas.clientWidth * this._resolutionScale);
-                        canvas.height = Math.round(canvas.clientHeight * this._resolutionScale);
-                    }
-
-                    const boundary = this.boundary;
-
-                    boundary[0] = canvas.offsetLeft;
-                    boundary[1] = canvas.offsetTop;
-                    boundary[2] = newWidth;
-                    boundary[3] = newHeight;
-
-                    /**
-                     * Fired whenever this Canvas's {@link Canvas/boundary} property changes.
-                     *
-                     * @event boundary
-                     * @param value The property's new value
-                     */
-                    if (!newResolutionScale) {
-                        this.fire("boundary", boundary);
-                    }
-
-                    lastCanvasWidth = newWidth;
-                    lastCanvasHeight = newHeight;
+        const resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.contentBoxSize) {
+                    dirtyBoundary = true;
                 }
-
-                if (newResolutionScale) {
-                    lastResolutionScale = this._resolutionScale;
-                }
-
-                if (newWindowSize) {
-                    lastWindowWidth = window.innerWidth;
-                    lastWindowHeight = window.innerHeight;
-                }
-
-                if (newCanvasPos) {
-                    lastCanvasOffsetLeft = canvas.offsetLeft;
-                    lastCanvasOffsetTop = canvas.offsetTop;
-                }
-
-                lastParent = parent;
             }
+        });
+
+        resizeObserver.observe(this.canvas);
+
+        // Publish canvas size and position changes on each scene tick
+        this._tick = this.scene.on("tick", () => {
+            // Only publish if the canvas bounds changed
+            if (!dirtyBoundary) {
+                return;
+            }
+
+            dirtyBoundary = false;
+
+            // Set the real size of the canvas (the drawable w*h)
+            self.canvas.width = Math.round(self.canvas.clientWidth * self._resolutionScale);
+            self.canvas.height = Math.round(self.canvas.clientHeight * self._resolutionScale);
+
+            // Publish the boundary change
+            self.boundary[0] = self.canvas.offsetLeft;
+            self.boundary[1] = self.canvas.offsetTop;
+            self.boundary[2] = self.canvas.clientWidth;
+            self.boundary[3] = self.canvas.clientHeight;
+
+            self.fire("boundary", self.boundary);
         });
 
         this._spinner = new Spinner(this.scene, {
@@ -434,20 +376,58 @@ class Canvas extends Component {
             this.fire("webglContextFailed", true, true);
         }
 
+        // data-textures: avoid to re-bind same texture
+        {
+            const gl = this.gl;
+
+            let lastTextureUnit = "__";
+
+            let originalActiveTexture = gl.activeTexture;
+
+            gl.activeTexture = function (arg1) {
+                if (lastTextureUnit === arg1) {
+                    return;
+                }
+
+                lastTextureUnit = arg1;
+
+                originalActiveTexture.call (this, arg1);
+            };
+
+            let lastBindTexture = {};
+
+            let originalBindTexture = gl.bindTexture;
+
+            let avoidedRebinds = 0;
+
+            gl.bindTexture = function (arg1, arg2) {
+                if (lastBindTexture[lastTextureUnit] === arg2)
+                {
+                    avoidedRebinds++;
+                    return;
+                }
+
+                lastBindTexture[lastTextureUnit] = arg2;
+
+                originalBindTexture.call (this, arg1, arg2);
+            }
+
+            // setInterval (
+            //     () => {
+            //         console.log (`${avoidedRebinds} avoided texture binds/sec`);
+            //         avoidedRebinds = 0;
+            //     },
+            //     1000
+            // );
+        }
+
         if (this.gl) {
             // Setup extension (if necessary) and hints for fragment shader derivative functions
             if (this.webgl2) {
                 this.gl.hint(this.gl.FRAGMENT_SHADER_DERIVATIVE_HINT, this.gl.FASTEST);
-            } else {
-                if (WEBGL_INFO.SUPPORTED_EXTENSIONS["OES_standard_derivatives"]) {
-                    const ext = this.gl.getExtension("OES_standard_derivatives");
-                    this.gl.hint(ext.FRAGMENT_SHADER_DERIVATIVE_HINT_OES, this.gl.FASTEST);
-                }
-                if (WEBGL_INFO.SUPPORTED_EXTENSIONS["EXT_frag_depth"]) {
-                    this.gl.getExtension('EXT_frag_depth');
-                }
-                if (WEBGL_INFO.SUPPORTED_EXTENSIONS["WEBGL_depth_texture"]) {
-                    this.gl.getExtension('WEBGL_depth_texture');
+
+                // data-textures: not using standard-derivatives
+                if (!(this.gl instanceof WebGL2RenderingContext)) {
                 }
             }
         }

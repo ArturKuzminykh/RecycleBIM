@@ -16,6 +16,7 @@ import {EmphasisMaterial} from '../materials/EmphasisMaterial.js';
 import {EdgeMaterial} from '../materials/EdgeMaterial.js';
 import {Metrics} from "../metriqs/Metriqs.js";
 import {SAO} from "../postfx/SAO.js";
+import {CrossSections} from "../postfx/CrossSections.js";
 import {PointsMaterial} from "../materials/PointsMaterial.js";
 import {LinesMaterial} from "../materials/LinesMaterial.js";
 
@@ -30,7 +31,7 @@ function getEntityIDMap(scene, entityIds) {
     let entity;
     for (let i = 0, len = entityIds.length; i < len; i++) {
         entityId = entityIds[i];
-        entity = scene.component[entityId];
+        entity = scene.components[entityId];
         if (!entity) {
             scene.warn("pick(): Component not found: " + entityId);
             continue;
@@ -340,6 +341,11 @@ class Scene extends Component {
      * @param {String} [cfg.canvasId]  ID of an existing HTML canvas for the {@link Scene#canvas} - either this or canvasElement is mandatory. When both values are given, the element reference is always preferred to the ID.
      * @param {HTMLCanvasElement} [cfg.canvasElement] Reference of an existing HTML canvas for the {@link Scene#canvas} - either this or canvasId is mandatory. When both values are given, the element reference is always preferred to the ID.
      * @param {HTMLElement} [cfg.keyboardEventsElement] Optional reference to HTML element on which key events should be handled. Defaults to the HTML Document.
+     * @param {number} [cfg.numCachedSectionPlanes=0] Enhances the efficiency of SectionPlane creation by proactively allocating Viewer resources for a specified quantity
+     * of SectionPlanes. Introducing this parameter streamlines the initial creation speed of SectionPlanes, particularly up to the designated quantity. This parameter internally
+     * configures renderer logic for the specified number of SectionPlanes, eliminating the need for setting up logic with each SectionPlane creation and thereby enhancing
+     * responsiveness. It is important to consider that each SectionPlane imposes rendering performance, so it is recommended to set this value to a quantity that aligns with
+     * your expected usage.
      * @throws {String} Throws an exception when both canvasId or canvasElement are missing or they aren't pointing to a valid HTMLCanvasElement.
      */
     constructor(viewer, cfg = {}) {
@@ -351,6 +357,11 @@ class Scene extends Component {
         if (!(canvas instanceof HTMLCanvasElement)) {
             throw "Mandatory config expected: valid canvasId or canvasElement";
         }
+
+        /**
+         * @type {{[key: string]: {wrapperFunc: Function, tickSubId: string}}}
+         */
+        this._tickifiedFunctions = {};
 
         const transparent = (!!cfg.transparent);
         const alphaDepthMask = (!!cfg.alphaDepthMask);
@@ -569,6 +580,20 @@ class Scene extends Component {
         this.reflectionMaps = {};
 
         /**
+         * The {@link Bitmap}s in this Scene, each mapped to its {@link Bitmap#id}.
+         *
+         * @type {{String:Bitmap}}
+         */
+        this.bitmaps = {};
+
+        /**
+         * The {@link LineSet}s in this Scene, each mapped to its {@link LineSet#id}.
+         *
+         * @type {{String:LineSet}}
+         */
+        this.lineSets = {};
+
+        /**
          * The real world offset for this Scene
          *
          * @type {Number[]}
@@ -611,20 +636,23 @@ class Scene extends Component {
 
             this.clippingCaps = false;
 
+            this._numCachedSectionPlanes = 0;
+
             let hash = null;
 
             this.getHash = function () {
                 if (hash) {
                     return hash;
                 }
+                const numAllocatedSectionPlanes = this.getNumAllocatedSectionPlanes();
                 const sectionPlanes = this.sectionPlanes;
-                if (sectionPlanes.length === 0) {
+                if (numAllocatedSectionPlanes === 0) {
                     return this.hash = ";";
                 }
                 let sectionPlane;
 
                 const hashParts = [];
-                for (let i = 0, len = sectionPlanes.length; i < len; i++) {
+                for (let i = 0, len = numAllocatedSectionPlanes; i < len; i++) {
                     sectionPlane = sectionPlanes[i];
                     hashParts.push("cp");
                 }
@@ -647,7 +675,23 @@ class Scene extends Component {
                     }
                 }
             };
+
+            this.setNumCachedSectionPlanes = function (numCachedSectionPlanes) {
+                this._numCachedSectionPlanes = numCachedSectionPlanes;
+                hash = null;
+            }
+
+            this.getNumCachedSectionPlanes = function () {
+                return this._numCachedSectionPlanes;
+            }
+
+            this.getNumAllocatedSectionPlanes = function () {
+                const num = this.sectionPlanes.length;
+                return (num > this._numCachedSectionPlanes) ? num : this._numCachedSectionPlanes;
+            };
         })();
+
+        this._sectionPlanesState.setNumCachedSectionPlanes(cfg.numCachedSectionPlanes || 0);
 
         this._lightsState = new (function () {
 
@@ -797,6 +841,14 @@ class Scene extends Component {
             enabled: cfg.saoEnabled
         });
 
+        /** Configures Cross Sections for this Scene.
+         * @type {CrossSections}
+         * @final
+         */
+        this.crossSections = new CrossSections(this, {
+
+        });
+
         this.ticksPerRender = cfg.ticksPerRender;
         this.ticksPerOcclusionTest = cfg.ticksPerOcclusionTest;
         this.passes = cfg.passes;
@@ -806,10 +858,12 @@ class Scene extends Component {
         this.gammaFactor = cfg.gammaFactor;
 
         this._entityOffsetsEnabled = !!cfg.entityOffsetsEnabled;
-        this._pickSurfacePrecisionEnabled = !!cfg.pickSurfacePrecisionEnabled;
         this._logarithmicDepthBufferEnabled = !!cfg.logarithmicDepthBufferEnabled;
 
+        this._dtxEnabled = (cfg.dtxEnabled !== false);
         this._pbrEnabled = !!cfg.pbrEnabled;
+        this._colorTextureEnabled = (cfg.colorTextureEnabled !== false);
+        this._dtxEnabled = !!cfg.dtxEnabled;
 
         // Register Scene on xeokit
         // Do this BEFORE we add components below
@@ -938,6 +992,16 @@ class Scene extends Component {
         this._needRecompile = true;
     }
 
+    _bitmapCreated(bitmap) {
+        this.bitmaps[bitmap.id] = bitmap;
+        this.scene.fire("bitmapCreated", bitmap, true /* Don't retain event */);
+    }
+
+    _lineSetCreated(lineSet) {
+        this.lineSets[lineSet.id] = lineSet;
+        this.scene.fire("lineSetCreated", lineSet, true /* Don't retain event */);
+    }
+
     _lightCreated(light) {
         this.lights[light.id] = light;
         this.scene._lightsState.addLight(light._state);
@@ -961,6 +1025,16 @@ class Scene extends Component {
         this.scene._sectionPlanesState.removeSectionPlane(sectionPlane._state);
         this.scene.fire("sectionPlaneDestroyed", sectionPlane, true /* Don't retain event */);
         this._needRecompile = true;
+    }
+
+    _bitmapDestroyed(bitmap) {
+        delete this.bitmaps[bitmap.id];
+        this.scene.fire("bitmapDestroyed", bitmap, true /* Don't retain event */);
+    }
+
+    _lineSetDestroyed(lineSet) {
+        delete this.lineSets[lineSet.id];
+        this.scene.fire("lineSetDestroyed", lineSet, true /* Don't retain event */);
     }
 
     _lightDestroyed(light) {
@@ -1027,7 +1101,13 @@ class Scene extends Component {
         }
     }
 
-    _objectXRayedUpdated(entity) {
+    _deRegisterVisibleObject(entity) {
+        delete this.visibleObjects[entity.id];
+        this._numVisibleObjects--;
+        this._visibleObjectIds = null; // Lazy regenerate
+    }
+
+    _objectXRayedUpdated(entity, notify = true) {
         if (entity.xrayed) {
             if (ASSERT_OBJECT_STATE_UPDATE && this.xrayedObjects[entity.id]) {
                 console.error("Redundant object xray update (xrayed=true)");
@@ -1043,6 +1123,15 @@ class Scene extends Component {
             delete this.xrayedObjects[entity.id];
             this._numXRayedObjects--;
         }
+        this._xrayedObjectIds = null; // Lazy regenerate
+        if (notify) {
+            this.fire("objectXRayed", entity, true);
+        }
+    }
+
+    _deRegisterXRayedObject(entity) {
+        delete this.xrayedObjects[entity.id];
+        this._numXRayedObjects--;
         this._xrayedObjectIds = null; // Lazy regenerate
     }
 
@@ -1065,7 +1154,13 @@ class Scene extends Component {
         this._highlightedObjectIds = null; // Lazy regenerate
     }
 
-    _objectSelectedUpdated(entity) {
+    _deRegisterHighlightedObject(entity) {
+        delete this.highlightedObjects[entity.id];
+        this._numHighlightedObjects--;
+        this._highlightedObjectIds = null; // Lazy regenerate
+    }
+
+    _objectSelectedUpdated(entity, notify = true) {
         if (entity.selected) {
             if (ASSERT_OBJECT_STATE_UPDATE && this.selectedObjects[entity.id]) {
                 console.error("Redundant object select update (selected=true)");
@@ -1082,7 +1177,17 @@ class Scene extends Component {
             this._numSelectedObjects--;
         }
         this._selectedObjectIds = null; // Lazy regenerate
+        if (notify) {
+            this.fire("objectSelected", entity, true);
+        }
     }
+
+    _deRegisterSelectedObject(entity) {
+        delete this.selectedObjects[entity.id];
+        this._numSelectedObjects--;
+        this._selectedObjectIds = null; // Lazy regenerate
+    }
+
 
     _objectColorizeUpdated(entity, colorized) {
         if (colorized) {
@@ -1092,6 +1197,12 @@ class Scene extends Component {
             delete this.colorizedObjects[entity.id];
             this._numColorizedObjects--;
         }
+        this._colorizedObjectIds = null; // Lazy regenerate
+    }
+
+    _deRegisterColorizedObject(entity) {
+        delete this.colorizedObjects[entity.id];
+        this._numColorizedObjects--;
         this._colorizedObjectIds = null; // Lazy regenerate
     }
 
@@ -1106,6 +1217,12 @@ class Scene extends Component {
         this._opacityObjectIds = null; // Lazy regenerate
     }
 
+    _deRegisterOpacityObject(entity) {
+        delete this.opacityObjects[entity.id];
+        this._numOpacityObjects--;
+        this._opacityObjectIds = null; // Lazy regenerate
+    }
+
     _objectOffsetUpdated(entity, offset) {
         if (!offset || offset[0] === 0 && offset[1] === 0 && offset[2] === 0) {
             this.offsetObjects[entity.id] = entity;
@@ -1114,6 +1231,12 @@ class Scene extends Component {
             delete this.offsetObjects[entity.id];
             this._numOffsetObjects--;
         }
+        this._offsetObjectIds = null; // Lazy regenerate
+    }
+
+    _deRegisterOffsetObject(entity) {
+        delete this.offsetObjects[entity.id];
+        this._numOffsetObjects--;
         this._offsetObjectIds = null; // Lazy regenerate
     }
 
@@ -1147,6 +1270,16 @@ class Scene extends Component {
     }
 
     /**
+     * Returns the capabilities of this Scene.
+     *
+     * @private
+     * @returns {{astcSupported: boolean, etc1Supported: boolean, pvrtcSupported: boolean, etc2Supported: boolean, dxtSupported: boolean, bptcSupported: boolean}}
+     */
+    get capabilities() {
+        return this._renderer.capabilities;
+    }
+
+    /**
      * Whether {@link Entity#offset} is enabled.
      *
      * This is set via the {@link Viewer} constructor and is ````false```` by default.
@@ -1169,7 +1302,7 @@ class Scene extends Component {
      * @returns {Boolean} True if precision picking is enabled.
      */
     get pickSurfacePrecisionEnabled() {
-        return this._pickSurfacePrecisionEnabled;
+        return false; // Removed
     }
 
     /**
@@ -1184,11 +1317,46 @@ class Scene extends Component {
     }
 
     /**
+     * Sets the number of {@link SectionPlane}s for which this Scene pre-caches resources.
+     *
+     * This property enhances the efficiency of SectionPlane creation by proactively allocating and caching Viewer resources for a specified quantity
+     * of SectionPlanes. Introducing this parameter streamlines the initial creation speed of SectionPlanes, particularly up to the designated quantity. This parameter internally
+     * configures renderer logic for the specified number of SectionPlanes, eliminating the need for setting up logic with each SectionPlane creation and thereby enhancing
+     * responsiveness. It is important to consider that each SectionPlane impacts rendering performance, so it is recommended to set this value to a quantity that aligns with
+     * your expected usage.
+     *
+     * Default is ````0````.
+     */
+    set numCachedSectionPlanes(numCachedSectionPlanes) {
+        numCachedSectionPlanes = numCachedSectionPlanes || 0;
+        if (this._sectionPlanesState.getNumCachedSectionPlanes() !== numCachedSectionPlanes) {
+            this._sectionPlanesState.setNumCachedSectionPlanes(numCachedSectionPlanes);
+            this._needRecompile = true;
+            this.glRedraw();
+        }
+    }
+
+    /**
+     * Gets the number of {@link SectionPlane}s for which this Scene pre-caches resources.
+     *
+     * This property enhances the efficiency of SectionPlane creation by proactively allocating and caching Viewer resources for a specified quantity
+     * of SectionPlanes. Introducing this parameter streamlines the initial creation speed of SectionPlanes, particularly up to the designated quantity. This parameter internally
+     * configures renderer logic for the specified number of SectionPlanes, eliminating the need for setting up logic with each SectionPlane creation and thereby enhancing
+     * responsiveness. It is important to consider that each SectionPlane impacts rendering performance, so it is recommended to set this value to a quantity that aligns with
+     * your expected usage.
+     *
+     * Default is ````0````.
+     *
+     * @returns {number} The number of {@link SectionPlane}s for which this Scene pre-caches resources.
+     */
+    get numCachedSectionPlanes() {
+        return this._sectionPlanesState.getNumCachedSectionPlanes();
+    }
+
+    /**
      * Sets whether physically-based rendering is enabled.
      *
      * Default is ````false````.
-     *
-     * @returns {Boolean} True if quality rendering is enabled.
      */
     set pbrEnabled(pbrEnabled) {
         this._pbrEnabled = !!pbrEnabled;
@@ -1196,7 +1364,7 @@ class Scene extends Component {
     }
 
     /**
-     * Sets whether quality rendering is enabled.
+     * Gets whether physically-based rendering is enabled.
      *
      * Default is ````false````.
      *
@@ -1204,6 +1372,59 @@ class Scene extends Component {
      */
     get pbrEnabled() {
         return this._pbrEnabled;
+    }
+
+    /**
+     * Sets whether data texture scene representation (DTX) is enabled for the {@link Scene}.
+     *
+     * Even when enabled, DTX will only work if supported.
+     *
+     * Default value is ````false````.
+     *
+     * @type {Boolean}
+     */
+    set dtxEnabled(value) {
+        value = !!value;
+        if (this._dtxEnabled === value) {
+            return;
+        }
+        this._dtxEnabled = value;
+    }
+
+    /**
+     * Gets whether data texture-based scene representation (DTX) is enabled for the {@link Scene}.
+     *
+     * Even when enabled, DTX will only apply if supported.
+     *
+     * Default value is ````false````.
+     *
+     * @type {Boolean}
+     */
+    get dtxEnabled() {
+        return this._dtxEnabled;
+    }
+
+    /**
+     * Sets whether basic color texture rendering is enabled.
+     *
+     * Default is ````true````.
+     *
+     * @returns {Boolean} True if basic color texture rendering is enabled.
+     */
+    set colorTextureEnabled(colorTextureEnabled) {
+        this._colorTextureEnabled = !!colorTextureEnabled;
+        this.glRedraw();
+    }
+
+    /**
+     * Gets whether basic color texture rendering is enabled.
+     *
+     * Default is ````true````.
+     *
+     * @returns {Boolean} True if basic color texture rendering is enabled.
+     */
+    get colorTextureEnabled() {
+        return this._colorTextureEnabled;
     }
 
     /**
@@ -1285,6 +1506,18 @@ class Scene extends Component {
         }
 
         this._saveAmbientColor();
+    }
+
+
+    /**
+     * @private
+     */
+    compile() {
+        if (this._needRecompile) {
+            this._recompile();
+            this._renderer.imageDirty();
+            this._needRecompile = false;
+        }
     }
 
     _recompile() {
@@ -2041,6 +2274,9 @@ class Scene extends Component {
      * @param {Number[]} [params.matrix] 4x4 transformation matrix to define the World-space ray origin and direction, as an alternative to ````origin```` and ````direction````.
      * @param {String[]} [params.includeEntities] IDs of {@link Entity}s to restrict picking to. When given, ignores {@link Entity}s whose IDs are not in this list.
      * @param {String[]} [params.excludeEntities] IDs of {@link Entity}s to ignore. When given, will pick *through* these {@link Entity}s, as if they were not there.
+     * @param {Number} [params.snapRadius=30] The snap radius, in canvas pixels
+     * @param {boolean} [params.snapToVertex=true] Whether to snap to vertex.
+     * @param {boolean} [params.snapToEdge=true] Whether to snap to edge.
      * @param {PickResult} [pickResult] Holds the results of the pick attempt. Will use the Scene's singleton PickResult if you don't supply your own.
      * @returns {PickResult} Holds results of the pick attempt, returned when an {@link Entity} is picked, else null. See method comments for description.
      */
@@ -2075,14 +2311,46 @@ class Scene extends Component {
             this._needRecompile = false;
         }
 
-        pickResult = this._renderer.pick(params, pickResult);
+        if (params.snapToEdge || params.snapToVertex) {
+            pickResult = this._renderer.snapPick(
+                params.canvasPos,
+                params.snapRadius || 30,
+                params.snapToVertex,
+                params.snapToEdge,
+                pickResult
+            );
+        } else {
+            pickResult = this._renderer.pick(params, pickResult);
+        }
 
         if (pickResult) {
             if (pickResult.entity && pickResult.entity.fire) {
-                pickResult.entity.fire("picked", pickResult); // TODO: PerformanceModelNode doesn't fire events
+                pickResult.entity.fire("picked", pickResult); // TODO: SceneModelEntity doesn't fire events
             }
-            return pickResult;
         }
+
+        return pickResult;
+    }
+
+    /**
+     * @param {Object} params Picking parameters.
+     * @param {Number[]} [params.canvasPos] Canvas-space coordinates. When ray-picking, this will override the **origin** and ** direction** parameters and will cause the ray to be fired through the canvas at this position, directly along the negative View-space Z-axis.
+     * @param {Number} [params.snapRadius=30] The snap radius, in canvas pixels
+     * @param {boolean} [params.snapToVertex=true] Whether to snap to vertex.
+     * @param {boolean} [params.snapToEdge=true] Whether to snap to edge.
+     * @deprecated
+     */
+    snapPick(params) {
+        if (undefined === this._warnSnapPickDeprecated) {
+            this._warnSnapPickDeprecated = true;
+            this.warn("Scene.snapPick() is deprecated since v2.4.2 - use Scene.pick() instead")
+        }
+        return this._renderer.snapPick(
+            params.canvasPos,
+            params.snapRadius || 30,
+            params.snapToVertex,
+            params.snapToEdge,
+        );
     }
 
     /**
@@ -2117,6 +2385,27 @@ class Scene extends Component {
         const ids = Object.keys(this.sectionPlanes);
         for (let i = 0, len = ids.length; i < len; i++) {
             this.sectionPlanes[ids[i]].destroy();
+        }
+    }
+
+    /**
+     * Destroys all {@link Line}s in this Scene.
+     */
+    clearBitmaps() {
+        const ids = Object.keys(this.bitmaps);
+        for (let i = 0, len = ids.length; i < len; i++) {
+            this.bitmaps[ids[i]].destroy();
+        }
+    }
+
+
+    /**
+     * Destroys all {@link Line}s in this Scene.
+     */
+    clearLines() {
+        const ids = Object.keys(this.lineSets);
+        for (let i = 0, len = ids.length; i < len; i++) {
+            this.lineSets[ids[i]].destroy();
         }
     }
 
@@ -2239,7 +2528,7 @@ class Scene extends Component {
      * @returns {Boolean} True if any {@link Entity}s were updated, else false if all updates were redundant and not applied.
      */
     setObjectsCulled(ids, culled) {
-        return this.withObjects(ids, this.objects, entity => {
+        return this.withObjects(ids, entity => {
             const changed = (entity.culled !== culled);
             entity.culled = culled;
             return changed;
@@ -2290,9 +2579,6 @@ class Scene extends Component {
      * Batch-updates {@link Entity#xrayed} on {@link Entity}s that represent objects.
      *
      * An {@link Entity} represents an object when {@link Entity#isObject} is ````true````.
-     *
-     * Each {@link Entity} on which both {@link Entity#isObject} and {@link Entity#xrayed} are ````true```` is
-     * registered by {@link Entity#id} in {@link Scene#xrayedObjects}.
      *
      * @param {String[]} ids Array of {@link Entity#id} values.
      * @param {Boolean} xrayed Whether or not to xray.
@@ -2391,9 +2677,6 @@ class Scene extends Component {
      *
      * An {@link Entity} represents an object when {@link Entity#isObject} is ````true````.
      *
-     * Each {@link Entity} on which {@link Entity#visible} is ````true```` is
-     * registered by {@link Entity#id} in {@link Scene#visibleObjects}.
-     *
      * @param {String[]} ids Array of {@link Entity#id} values.
      * @param {Function} callback Callback to execute on eacn {@link Entity}.
      * @returns {Boolean} True if any {@link Entity}s were updated, else false if all updates were redundant and not applied.
@@ -2421,6 +2704,63 @@ class Scene extends Component {
             }
         }
         return changed;
+    }
+
+    /**
+     * This method will "tickify" the provided `cb` function.
+     *
+     * This means, the function will be wrapped so:
+     *
+     * - it runs time-aligned to scene ticks
+     * - it runs maximum once per scene-tick
+     *
+     * @param {Function} cb The function to tickify
+     * @returns {Function}
+     */
+    tickify(cb) {
+        const cbString = cb.toString();
+
+        /**
+         * Check if the function is already tickified, and if so return the cached one.
+         */
+        if (cbString in this._tickifiedFunctions) {
+            return this._tickifiedFunctions[cbString].wrapperFunc;
+        }
+
+        let alreadyRun = 0;
+        let needToRun = 0;
+
+        let lastArgs;
+
+        /**
+         * The provided `cb` function is replaced with a "set-dirty" function
+         *
+         * @type {Function}
+         */
+        const wrapperFunc = function (...args) {
+            lastArgs = args;
+            needToRun++;
+        };
+
+        /**
+         * An each scene tick, if the "dirty-flag" is set, run the `cb` function.
+         *
+         * This will make it run time-aligned to the scene tick.
+         */
+        const tickSubId = this.on("tick", () => {
+            const tmp = needToRun;
+            if (tmp > alreadyRun) {
+                alreadyRun = tmp;
+                cb(...lastArgs);
+            }
+        });
+
+        /**
+         * And, store the list of subscribers.
+         */
+        this._tickifiedFunctions[cbString] = {tickSubId, wrapperFunc};
+
+        return wrapperFunc;
     }
 
     /**

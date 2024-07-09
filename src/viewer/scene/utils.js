@@ -1,6 +1,8 @@
 /**
  * @private
  */
+import {core} from "./core.js";
+
 function xmlToJson(node, attributeRenamer) {
     if (node.nodeType === node.TEXT_NODE) {
         var v = node.nodeValue;
@@ -103,7 +105,6 @@ function httpRequest(args) {
         var xhr = new XMLHttpRequest();
         xhr.open(args.method || "GET", args.url, true);
         xhr.onload = function (e) {
-            console.log(args.url, xhr.readyState, xhr.status);
             if (xhr.readyState === 4) {
                 if (xhr.status === 200) {
                     resolve(xhr.responseXML);
@@ -207,13 +208,13 @@ function loadArraybuffer(url, ok, err) {
             for (var i = 0; i < data.length; i++) {
                 view[i] = data.charCodeAt(i);
             }
-            window.setTimeout(function () {
+            core.scheduleTask(() => {
                 ok(buffer);
-            }, 0);
+            });
         } catch (error) {
-            window.setTimeout(function () {
+            core.scheduleTask(() => {
                 err(error);
-            }, 0);
+            });
         }
     } else {
         const request = new XMLHttpRequest();
@@ -243,7 +244,7 @@ function isArray(value) {
 /**
  Tests if the given value is a string
  @param value
- @returns {boolean}
+ @returns {Boolean}
  @private
  */
 function isString(value) {
@@ -253,7 +254,7 @@ function isString(value) {
 /**
  Tests if the given value is a number
  @param value
- @returns {boolean}
+ @returns {Boolean}
  @private
  */
 function isNumeric(value) {
@@ -263,7 +264,7 @@ function isNumeric(value) {
 /**
  Tests if the given value is an ID
  @param value
- @returns {boolean}
+ @returns {Boolean}
  @private
  */
 function isID(value) {
@@ -274,7 +275,7 @@ function isID(value) {
  Tests if the given components are the same, where the components can be either IDs or instances.
  @param c1
  @param c2
- @returns {boolean}
+ @returns {Boolean}
  @private
  */
 function isSameComponent(c1, c2) {
@@ -289,7 +290,7 @@ function isSameComponent(c1, c2) {
 /**
  Tests if the given value is a function
  @param value
- @returns {boolean}
+ @returns {Boolean}
  @private
  */
 function isFunction(value) {
@@ -299,7 +300,7 @@ function isFunction(value) {
 /**
  Tests if the given value is a JavaScript JSON object, eg, ````{ foo: "bar" }````.
  @param value
- @returns {boolean}
+ @returns {Boolean}
  @private
  */
 function isObject(value) {
@@ -357,7 +358,7 @@ function applyIf(o, o2) {
 /**
  Returns true if the given map is empty.
  @param obj
- @returns {boolean}
+ @returns {Boolean}
  @private
  */
 function isEmptyObject(obj) {

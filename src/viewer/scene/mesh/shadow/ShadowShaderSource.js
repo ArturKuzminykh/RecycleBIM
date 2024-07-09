@@ -14,7 +14,7 @@ function buildVertex(mesh) {
     const quantizedGeometry = !!mesh._geometry._state.compressGeometry;
     const src = [];
     src.push("// Mesh shadow vertex shader");
-    src.push("attribute vec3 position;");
+    src.push("in vec3 position;");
     src.push("uniform mat4 modelMatrix;");
     src.push("uniform mat4 shadowViewMatrix;");
     src.push("uniform mat4 shadowProjMatrix;");
@@ -23,7 +23,7 @@ function buildVertex(mesh) {
         src.push("uniform mat4 positionsDecodeMatrix;");
     }
     if (clipping) {
-        src.push("varying vec4 vWorldPosition;");
+        src.push("out vec4 vWorldPosition;");
     }
     src.push("void main(void) {");
     src.push("vec4 localPosition = vec4(position, 1.0); ");
@@ -46,7 +46,7 @@ function buildFragment(mesh) {
     const scene = mesh.scene;
     const gl = scene.canvas.gl;
     const sectionPlanesState = scene._sectionPlanesState;
-    const clipping = sectionPlanesState.sectionPlanes.length > 0;
+    const clipping = sectionPlanesState.getNumAllocatedSectionPlanes() > 0;
     const src = [];
     src.push("// Mesh shadow fragment shader");
 
@@ -60,8 +60,8 @@ function buildFragment(mesh) {
 
     if (clipping) {
         src.push("uniform bool clippable;");
-        src.push("varying vec4 vWorldPosition;");
-        for (var i = 0; i < sectionPlanesState.sectionPlanes.length; i++) {
+        src.push("in vec4 vWorldPosition;");
+        for (var i = 0; i < sectionPlanesState.getNumAllocatedSectionPlanes(); i++) {
             src.push("uniform bool sectionPlaneActive" + i + ";");
             src.push("uniform vec3 sectionPlanePos" + i + ";");
             src.push("uniform vec3 sectionPlaneDir" + i + ";");
@@ -76,11 +76,13 @@ function buildFragment(mesh) {
     src.push("  return comp;");
     src.push("}");
 
+    src.push("out vec4 outColor;");
+
     src.push("void main(void) {");
     if (clipping) {
         src.push("if (clippable) {");
         src.push("  float dist = 0.0;");
-        for (var i = 0; i < sectionPlanesState.sectionPlanes.length; i++) {
+        for (var i = 0; i < sectionPlanesState.getNumAllocatedSectionPlanes(); i++) {
             src.push("if (sectionPlaneActive" + i + ") {");
             src.push("   dist += clamp(dot(-sectionPlaneDir" + i + ".xyz, vWorldPosition.xyz - sectionPlanePos" + i + ".xyz), 0.0, 1000.0);");
             src.push("}");
@@ -88,7 +90,7 @@ function buildFragment(mesh) {
         src.push("  if (dist > 0.0) { discard; }");
         src.push("}");
     }
-    src.push("gl_FragColor = encodeFloat(gl_FragCoord.z);");
+    src.push("outColor = encodeFloat(gl_FragCoord.z);");
     src.push("}");
     return src;
 }
